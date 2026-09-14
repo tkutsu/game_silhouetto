@@ -13,7 +13,7 @@ Levels are generated, not authored. A seed builds a random cluster of primitives
 
 The shadow light, the target overlay, and the scoring all share one orthographic projection, so they line up exactly. The match score is the IoU (intersection over union) of the current and target silhouettes, rendered offscreen at 128×128. The target outline warms from blue to gold as the match rises, and each new closest match plays a rising chime.
 
-Each part of the shape gets its own seeded PBR material, picked from 36 CC0 texture sets from ambientCG and Poly Haven (candy, pizza, sponge, onyx, chainmail, denim and more; see `public/textures/CREDITS.md`). Materials never affect the score, which only sees the bare geometry.
+Each part of the shape gets its own seeded PBR material, picked from 43 CC0 texture sets from ambientCG and Poly Haven, chosen for strong surface bumps (bark, wicker, rope, roofing tiles, pizza, sponge, candy and more; see `public/textures/CREDITS.md`). Materials never affect the score, which only sees the bare geometry.
 
 ## Controls
 

@@ -54,10 +54,18 @@ export function Wall() {
     tex.anisotropy = gl.capabilities.getMaxAnisotropy()
     return tex
   }, [gl])
+  // The wall ignores scene lights so the shape can be lit dramatically without washing out
+  // the shadow; a ShadowMaterial layer on top darkens only where the shape blocks the light.
   return (
-    <mesh position={[0, 0, WALL_Z]} receiveShadow>
-      <planeGeometry args={[WORLD_W, WORLD_H]} />
-      <meshStandardMaterial map={map} roughness={1} />
-    </mesh>
+    <>
+      <mesh position={[0, 0, WALL_Z]}>
+        <planeGeometry args={[WORLD_W, WORLD_H]} />
+        <meshBasicMaterial map={map} />
+      </mesh>
+      <mesh position={[0, 0, WALL_Z + 0.002]} receiveShadow>
+        <planeGeometry args={[WORLD_W, WORLD_H]} />
+        <shadowMaterial color="#010611" opacity={0.78} transparent depthWrite={false} />
+      </mesh>
+    </>
   )
 }

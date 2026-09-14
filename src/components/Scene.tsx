@@ -27,21 +27,24 @@ function CameraRig() {
 
 export function Scene() {
   return (
-    <Canvas shadows="percentage" className="touch-none" camera={{ position: [5.2, 1.6, 6.4], fov: FOV }}>
+    <Canvas shadows="variance" className="touch-none" camera={{ position: [5.2, 1.6, 6.4], fov: FOV }}>
       <CameraRig />
       <color attach="background" args={['#081120']} />
-      <ambientLight intensity={0.22} />
+      <hemisphereLight args={['#dce9ff', '#3b2c20', 1.1]} />
+      {/* Casts the gameplay shadow; must stay on the light axis to match the silhouette projection. */}
       <directionalLight
         position={[0, 0, LIGHT_Z]}
-        intensity={2.7}
+        intensity={0.9}
         castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-bias={-0.0005}
+        shadow-mapSize={[1024, 1024]}
+        shadow-radius={9}
+        shadow-blurSamples={16}
+        shadow-bias={-0.0002}
       >
         <orthographicCamera attach="shadow-camera" args={[-S, S, S, -S, 0.1, LIGHT_Z * 2]} />
       </directionalLight>
-      <directionalLight position={[4, 5, 2]} intensity={0.55} color="#cfe0ff" />
-      <directionalLight position={[-5, 4, -3]} intensity={1.1} color="#a8c8ff" />
+      <directionalLight position={[-4, 6, 5]} intensity={2.4} color="#fff0db" />
+      <directionalLight position={[3, 2.5, -6]} intensity={2.2} color="#9cc4ff" />
       <Wall />
       <LevelView />
     </Canvas>

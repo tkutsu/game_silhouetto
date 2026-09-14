@@ -62,6 +62,7 @@ export function HUD() {
   const level = useGame((s) => s.level)
   const best = useGame((s) => s.best)
   const solvedCount = useGame((s) => s.solvedCount)
+  const totalTime = useGame((s) => s.totalTime)
   const muted = useGame((s) => s.muted)
   const next = useGame((s) => s.next)
   const toggleMute = useGame((s) => s.toggleMute)
@@ -71,9 +72,14 @@ export function HUD() {
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Silhouetto</h1>
-          <p className="text-sm text-slate-400">
-            Best <span className="font-mono text-amber-300">{best === null ? '-:--' : formatTime(best)}</span>
-            {solvedCount > 0 && <> · {solvedCount} solved</>}
+          <p className="flex flex-wrap gap-x-3 text-sm whitespace-nowrap text-slate-400">
+            <span>
+              Best <span className="font-mono text-amber-300">{best === null ? '-:--' : formatTime(best)}</span>
+            </span>
+            <span>
+              Avg <span className="font-mono text-slate-200">{solvedCount ? formatTime(totalTime / solvedCount) : '-:--'}</span>
+            </span>
+            {solvedCount > 0 && <span>{solvedCount} solved</span>}
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm">

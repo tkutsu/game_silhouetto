@@ -22,6 +22,7 @@ interface GameState {
   newBest: boolean
   best: number | null
   solvedCount: number
+  totalTime: number
   muted: boolean
   didTumble: boolean
   didSpin: boolean
@@ -55,6 +56,7 @@ export const useGame = create<GameState>((set, get) => ({
   newBest: false,
   best: stats.best,
   solvedCount: stats.solved,
+  totalTime: stats.totalTime,
   muted: localStorage.getItem(MUTE_KEY) === '1',
   didTumble: false,
   didSpin: false,
@@ -91,14 +93,14 @@ export const useGame = create<GameState>((set, get) => ({
   },
 
   solve: (match) => {
-    const { startedAt, best, solvedCount, seed } = get()
+    const { startedAt, best, solvedCount, totalTime, seed } = get()
     const time = startedAt === null ? 0 : performance.now() - startedAt
     const newBest = best === null || time < best
-    const next = { best: newBest ? time : best, solved: solvedCount + 1 }
+    const next = { best: newBest ? time : best, solved: solvedCount + 1, totalTime: totalTime + time }
     saveStats(next)
     if (!get().muted) sound.win()
     navigator.vibrate?.([20, 40, 30])
-    set({ solved: true, match, time, newBest, best: next.best, solvedCount: next.solved })
+    set({ solved: true, match, time, newBest, best: next.best, solvedCount: next.solved, totalTime: next.totalTime })
     setTimeout(() => {
       if (get().seed === seed) get().next()
     }, ADVANCE_MS)

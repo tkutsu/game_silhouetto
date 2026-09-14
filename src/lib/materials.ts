@@ -5,6 +5,7 @@ import {
   RepeatWrapping,
   SRGBColorSpace,
   TextureLoader,
+  Vector2,
   type Texture,
   type WebGLRenderer,
 } from 'three'
@@ -12,54 +13,63 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { rngFor } from './rng'
 
 /**
- * CC0 texture sets in public/textures/<id>/ (color, normal, rough, optional metal),
- * from ambientCG and Poly Haven. See public/textures/CREDITS.md.
+ * CC0 texture sets in public/textures/<id>/ from ambientCG and Poly Haven, picked for
+ * strong normal maps over flat glossy surfaces. See public/textures/CREDITS.md.
+ * `metal: 'full'` sets are uniformly metallic, so they skip the map download.
  */
-const SETS: { id: string; metal?: boolean }[] = [
+const SETS: { id: string; metal?: 'map' | 'full' }[] = [
+  { id: 'AcousticFoam003' },
+  { id: 'Bamboo001A' },
+  { id: 'Bark004' },
+  { id: 'Bricks075A' },
   { id: 'Candy001' },
-  { id: 'Carpet006' },
-  { id: 'Chainmail004', metal: true },
-  { id: 'ChristmasTreeOrnament011', metal: true },
-  { id: 'ChristmasTreeOrnament015', metal: true },
-  { id: 'ChristmasTreeOrnament016', metal: true },
-  { id: 'ChristmasTreeOrnament017', metal: true },
-  { id: 'Clay003' },
-  { id: 'Cork003' },
-  { id: 'Fabric080' },
-  { id: 'Foam002' },
-  { id: 'Foil002', metal: true },
-  { id: 'Grass005' },
-  { id: 'Ice002' },
-  { id: 'Lava004' },
-  { id: 'Leather034C' },
-  { id: 'Marble016' },
-  { id: 'Metal032', metal: true },
-  { id: 'Metal048A', metal: true },
-  { id: 'Metal053C', metal: true },
-  { id: 'Moss002' },
-  { id: 'Onyx010' },
-  { id: 'Onyx011' },
-  { id: 'PaintedMetal010', metal: true },
-  { id: 'PaintedMetal016', metal: true },
-  { id: 'Pizza003' },
-  { id: 'Plastic014A' },
-  { id: 'Plastic015A' },
-  { id: 'Rope001', metal: true },
-  { id: 'Sponge001' },
-  { id: 'Sponge003' },
-  { id: 'Terrazzo009' },
-  { id: 'Wicker007A' },
-  { id: 'Wood066' },
+  { id: 'Candy002' },
+  { id: 'Candy003' },
+  { id: 'Carpet014' },
+  { id: 'Chainmail004', metal: 'full' },
+  { id: 'Cork001' },
+  { id: 'CorrugatedSteel008A' },
+  { id: 'CorrugatedSteel009', metal: 'full' },
   { id: 'denim_fabric' },
+  { id: 'DiamondPlate007D', metal: 'map' },
+  { id: 'Fabric083' },
+  { id: 'Foam001' },
+  { id: 'Foam002' },
+  { id: 'Foam003' },
+  { id: 'Foil002', metal: 'full' },
+  { id: 'Grass001' },
+  { id: 'Ground054' },
   { id: 'knitted_fleece' },
+  { id: 'Lava001' },
+  { id: 'Lava003' },
+  { id: 'Leather034C' },
+  { id: 'Moss001' },
+  { id: 'Pizza001' },
+  { id: 'Pizza002' },
+  { id: 'Pizza003' },
+  { id: 'Pizza004' },
+  { id: 'Rock030' },
+  { id: 'RoofingTiles006' },
+  { id: 'RoofingTiles014A' },
+  { id: 'Rope001' },
+  { id: 'Rope003' },
+  { id: 'Shells001' },
+  { id: 'Sponge001' },
+  { id: 'Sponge002' },
+  { id: 'Sponge003' },
+  { id: 'Wicker006' },
+  { id: 'Wicker008A' },
+  { id: 'Wicker010A' },
+  { id: 'WoodChips001' },
 ]
 
+const BUMP = new Vector2(1.4, 1.4)
 const loader = new TextureLoader()
 const cache = new Map<string, Texture>()
 
-/** Textures are shared across puzzles and never disposed; the whole set is 4.4 MB. */
+/** Textures are shared across puzzles and never disposed; the whole set is about 2.5 MB. */
 function texture(id: string, map: string, color = false): Texture {
-  const url = `${import.meta.env.BASE_URL}textures/${id}/${map}.jpg`
+  const url = `${import.meta.env.BASE_URL}textures/${id}/${map}.webp`
   let tex = cache.get(url)
   if (!tex) {
     tex = loader.load(url)
@@ -75,7 +85,7 @@ export function preloadTextures() {
     texture(id, 'color', true)
     texture(id, 'normal')
     texture(id, 'rough')
-    if (metal) texture(id, 'metal')
+    if (metal === 'map') texture(id, 'metal')
   }
 }
 
@@ -108,7 +118,8 @@ export function createPartMaterials(seed: string, count: number, gl: WebGLRender
       map: texture(id, 'color', true),
       normalMap: texture(id, 'normal'),
       roughnessMap: texture(id, 'rough'),
-      metalnessMap: metal ? texture(id, 'metal') : null,
+      normalScale: BUMP,
+      metalnessMap: metal === 'map' ? texture(id, 'metal') : null,
       metalness: metal ? 1 : 0,
       envMap: reflections(gl),
       envMapIntensity: 0.6,

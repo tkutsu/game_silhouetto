@@ -63,10 +63,10 @@ export function LevelView() {
         />
       </mesh>
       {!solved && !didTumble && (
-        <Annotation position={[-3.6, 2.5]} arrow="down" lines={['DRAG THE SHAPE', 'TO TUMBLE IT']} />
+        <Annotation position={[-3.3, 2.3]} arrow="down" text={'DRAG THE SHAPE\nTO TUMBLE IT'} />
       )}
       {!solved && !didSpin && (
-        <Annotation position={[-0.3, -2.7]} arrow="up" lines={['DRAG SHADOW TO SPIN']} />
+        <Annotation position={[0.25, -2.25]} arrow="up" text={'DRAG THE SHADOW\nTO SPIN IT'} />
       )}
     </>
   )
