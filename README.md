@@ -2,6 +2,8 @@
 
 A daily 3D shadow-matching puzzle. Rotate an abstract shape until its shadow on the wall fits the glowing outline.
 
+Play at [silhouetto.themos.dev](https://silhouetto.themos.dev).
+
 - **Daily puzzle**: the same seeded shape for everyone each day, with a timer, streaks, and a shareable result.
 - **Practice**: random seeded puzzles, shareable by link (`?p=<seed>`).
 
