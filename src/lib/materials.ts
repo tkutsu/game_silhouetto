@@ -104,7 +104,10 @@ function reflections(gl: WebGLRenderer): Texture {
   return environment
 }
 
-/** One seeded material per merged-geometry group, drawn without repeats from the shuffled sets. */
+/** 'Foam002' and 'Foam001' look alike; group ids by their letter prefix so a shape never repeats a family. */
+const family = (id: string) => /^[A-Z]/.test(id) ? (id.match(/^[A-Za-z]+/) as RegExpMatchArray)[0] : id
+
+/** One seeded material per merged-geometry group; no two parts share a texture family. */
 export function createPartMaterials(seed: string, count: number, gl: WebGLRenderer): MeshStandardMaterial[] {
   const rng = rngFor(`${seed}#materials`)
   const order = SETS.map((_, i) => i)
@@ -112,9 +115,19 @@ export function createPartMaterials(seed: string, count: number, gl: WebGLRender
     const j = Math.floor(rng() * (i + 1))
     ;[order[i], order[j]] = [order[j], order[i]]
   }
+  const picked: number[] = []
+  const used = new Set<string>()
+  for (const idx of order) {
+    const fam = family(SETS[idx].id)
+    if (used.has(fam)) continue
+    used.add(fam)
+    picked.push(idx)
+    if (picked.length === count) break
+  }
   return Array.from({ length: count }, (_, i) => {
-    const { id, metal } = SETS[order[i % order.length]]
+    const { id, metal } = SETS[picked[i % picked.length]]
     return new MeshStandardMaterial({
+      name: id,
       map: texture(id, 'color', true),
       normalMap: texture(id, 'normal'),
       roughnessMap: texture(id, 'rough'),

@@ -27,7 +27,7 @@ function CameraRig() {
 
 export function Scene() {
   return (
-    <Canvas shadows="variance" className="touch-none" camera={{ position: [5.2, 1.6, 6.4], fov: FOV }}>
+    <Canvas shadows className="touch-none" camera={{ position: [5.2, 1.6, 6.4], fov: FOV }}>
       <CameraRig />
       <color attach="background" args={['#081120']} />
       <hemisphereLight args={['#dce9ff', '#3b2c20', 1.1]} />
@@ -36,10 +36,9 @@ export function Scene() {
         position={[0, 0, LIGHT_Z]}
         intensity={0.9}
         castShadow
-        shadow-mapSize={[1024, 1024]}
-        shadow-radius={9}
-        shadow-blurSamples={16}
-        shadow-bias={-0.0002}
+        shadow-mapSize={[2048, 2048]}
+        shadow-radius={4}
+        shadow-bias={-0.0004}
       >
         <orthographicCamera attach="shadow-camera" args={[-S, S, S, -S, 0.1, LIGHT_Z * 2]} />
       </directionalLight>
