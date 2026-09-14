@@ -1,9 +1,10 @@
+import { useThree } from '@react-three/fiber'
 import { useMemo } from 'react'
 import { CanvasTexture, SRGBColorSpace } from 'three'
 import { WALL_Z } from '../lib/constants'
 
-const W = 1024
-const H = 768
+const W = 2048
+const H = 1536
 const WORLD_W = 40
 const WORLD_H = 30
 const PX_PER_UNIT = W / WORLD_W
@@ -24,7 +25,7 @@ function blueprint() {
 
     const grid = (step: number, alpha: number) => {
       ctx.strokeStyle = `rgba(190,220,255,${alpha})`
-      ctx.lineWidth = 1
+      ctx.lineWidth = step > PX_PER_UNIT * 2 ? 2.5 : 1.5
       for (let x = 0.5; x <= W; x += step) {
         ctx.beginPath()
         ctx.moveTo(x, 0)
@@ -47,7 +48,12 @@ function blueprint() {
 }
 
 export function Wall() {
-  const map = useMemo(() => blueprint(), [])
+  const gl = useThree((s) => s.gl)
+  const map = useMemo(() => {
+    const tex = blueprint()
+    tex.anisotropy = gl.capabilities.getMaxAnisotropy()
+    return tex
+  }, [gl])
   return (
     <mesh position={[0, 0, WALL_Z]} receiveShadow>
       <planeGeometry args={[WORLD_W, WORLD_H]} />

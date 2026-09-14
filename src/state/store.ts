@@ -13,6 +13,10 @@ interface GameState {
   startedAt: number | null
   /** Final solve time in ms. */
   time: number | null
+  didTumble: boolean
+  didSpin: boolean
+  markTumble: () => void
+  markSpin: () => void
   setLevel: (level: Level) => void
   setMatch: (match: number) => void
   begin: () => void
@@ -35,6 +39,15 @@ export const useGame = create<GameState>((set, get) => ({
   solved: false,
   startedAt: null,
   time: null,
+  didTumble: false,
+  didSpin: false,
+
+  markTumble: () => {
+    if (!get().didTumble) set({ didTumble: true })
+  },
+  markSpin: () => {
+    if (!get().didSpin) set({ didSpin: true })
+  },
 
   setLevel: (level) => {
     const old = get().level

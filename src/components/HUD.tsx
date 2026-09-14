@@ -73,7 +73,7 @@ export function HUD() {
       <footer className="flex flex-col items-center gap-3">
         <MatchMeter />
         <p className="text-center text-xs text-slate-500">
-          Drag the shape to tumble it · Drag the shadow to turn it like a dial · Fit it into the outline
+          Fit the shadow into the outline · scroll or Q/E also spins
         </p>
       </footer>
     </div>

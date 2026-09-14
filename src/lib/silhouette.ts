@@ -77,19 +77,23 @@ export function maskTexture(mask: Mask, res: number, label: string): CanvasTextu
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('2d context unavailable')
 
+  const k = res / 512
+  const stroke = Math.max(2, Math.round(3 * k))
+  const hatchPeriod = Math.max(4, Math.round(7 * k))
+  const hatchWidth = Math.max(1, Math.round(2 * k))
   const at = (x: number, y: number) => x >= 0 && y >= 0 && x < res && y < res && mask[y * res + x] === 1
   const img = ctx.createImageData(res, res)
   for (let y = 0; y < res; y++) {
     for (let x = 0; x < res; x++) {
       if (!at(x, y)) continue
       let edge = false
-      for (let d = 1; d <= 3 && !edge; d++) {
+      for (let d = 1; d <= stroke && !edge; d++) {
         edge = !at(x + d, y) || !at(x - d, y) || !at(x, y + d) || !at(x, y - d)
       }
       // canvas rows run top-down; the mask (from readPixels) runs bottom-up
       const i = ((res - 1 - y) * res + x) * 4
       img.data[i] = img.data[i + 1] = img.data[i + 2] = 255
-      img.data[i + 3] = edge ? 255 : (x + y) % 7 < 2 ? 90 : 32
+      img.data[i + 3] = edge ? 255 : (x + y) % hatchPeriod < hatchWidth ? 90 : 32
     }
   }
   ctx.putImageData(img, 0, 0)
@@ -124,10 +128,10 @@ export function maskTexture(mask: Mask, res: number, label: string): CanvasTextu
     ctx.fill()
   }
 
-  ctx.font = `${res / 24}px ui-monospace, monospace`
+  ctx.font = `${res / 26}px ui-monospace, monospace`
   ctx.fillStyle = 'rgba(255,255,255,0.6)'
-  ctx.textAlign = 'center'
-  ctx.fillText(label, c, res * 0.99)
+  ctx.textAlign = 'left'
+  ctx.fillText(label, res * 0.015, res * 0.99)
 
   const tex = new CanvasTexture(canvas)
   tex.colorSpace = SRGBColorSpace

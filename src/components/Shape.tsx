@@ -124,6 +124,7 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
           if (angle !== null) {
             rotate(Z, wrapAngle(angle - prev.angle))
             prev.angle = angle
+            useGame.getState().markSpin()
           }
         } else {
           const dx = e.clientX - prev.x
@@ -132,6 +133,7 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
           if (len > 0) {
             axis.set(dy, dx, 0).divideScalar(len)
             rotate(axis, len * DRAG_SPEED)
+            useGame.getState().markTumble()
             const dt = Math.max((now - lastMove) / 1000, 1 / 240)
             s.vel.lerp(axis.multiplyScalar((len * DRAG_SPEED) / dt), 0.5).clampLength(0, MAX_SPIN)
           }
@@ -142,6 +144,7 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
           const before = Math.atan2(prev.y - other.y, prev.x - other.x)
           const after = Math.atan2(e.clientY - other.y, e.clientX - other.x)
           rotate(Z, -wrapAngle(after - before))
+          useGame.getState().markSpin()
         }
       }
 
@@ -160,7 +163,10 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
 
     const wheel = (e: WheelEvent) => {
       e.preventDefault()
-      if (active()) rotate(Z, -e.deltaY * WHEEL_SPEED)
+      if (active()) {
+        rotate(Z, -e.deltaY * WHEEL_SPEED)
+        useGame.getState().markSpin()
+      }
     }
 
     const keys: Record<string, [Vector3, number]> = {
@@ -175,7 +181,10 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
       const k = keys[e.code]
       if (!k) return
       e.preventDefault()
-      if (active()) rotate(...k)
+      if (active()) {
+        rotate(...k)
+        useGame.getState()[k[0] === Z ? 'markSpin' : 'markTumble']()
+      }
     }
 
     el.addEventListener('pointerdown', down)

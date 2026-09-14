@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import type { MeshBasicMaterial } from 'three'
 import { FRAME, WALL_Z } from '../lib/constants'
 import { buildLevel } from '../lib/level'
+import { Annotation } from './Annotation'
 import { Silhouetter } from '../lib/silhouette'
 import { useGame } from '../state/store'
 import { Shape } from './Shape'
@@ -12,6 +13,8 @@ export function LevelView() {
   const seed = useGame((s) => s.seed)
   const level = useGame((s) => s.level)
   const solved = useGame((s) => s.solved)
+  const didTumble = useGame((s) => s.didTumble)
+  const didSpin = useGame((s) => s.didSpin)
   const sil = useMemo(() => new Silhouetter(gl), [gl])
   const overlay = useRef<MeshBasicMaterial>(null)
 
@@ -22,8 +25,10 @@ export function LevelView() {
 
   useEffect(() => () => sil.dispose(), [sil])
   useEffect(() => {
-    useGame.getState().setLevel(buildLevel(seed, sil))
-  }, [seed, sil])
+    const level = buildLevel(seed, sil)
+    level.targetTexture.anisotropy = gl.capabilities.getMaxAnisotropy()
+    useGame.getState().setLevel(level)
+  }, [seed, sil, gl])
 
   if (!level) return null
   return (
@@ -40,6 +45,12 @@ export function LevelView() {
           toneMapped={false}
         />
       </mesh>
+      {!solved && !didTumble && (
+        <Annotation position={[-3.6, 2.5]} arrow="down" lines={['DRAG THE SHAPE', 'TO TUMBLE IT']} />
+      )}
+      {!solved && !didSpin && (
+        <Annotation position={[-0.3, -2.7]} arrow="up" lines={['DRAG SHADOW TO SPIN']} />
+      )}
     </>
   )
 }
