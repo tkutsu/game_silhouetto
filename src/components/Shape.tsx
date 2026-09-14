@@ -36,7 +36,7 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
   const gl = useThree((state) => state.gl)
   const camera = useThree((state) => state.camera)
   const mesh = useRef<Mesh>(null)
-  const materials = useMemo(() => createPartMaterials(level.seed, level.geometry.groups.length), [level])
+  const materials = useMemo(() => createPartMaterials(level.seed, level.geometry.groups.length, gl), [level, gl])
   const s = useRef({
     q: level.start.clone(),
     vel: new Vector3(),
@@ -51,10 +51,7 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
 
   useEffect(
     () => () =>
-      materials.forEach((m) => {
-        m.map?.dispose()
-        m.dispose()
-      }),
+      materials.forEach((m) => m.dispose()),
     [materials],
   )
 

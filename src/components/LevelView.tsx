@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import type { MeshBasicMaterial } from 'three'
 import { FRAME, WALL_Z, WIN_IOU } from '../lib/constants'
 import { buildLevel } from '../lib/level'
+import { preloadTextures } from '../lib/materials'
 import { Annotation } from './Annotation'
 import { Silhouetter } from '../lib/silhouette'
 import { useGame } from '../state/store'
@@ -35,6 +36,11 @@ export function LevelView() {
   })
 
   useEffect(() => () => sil.dispose(), [sil])
+  useEffect(() => {
+    // after the first puzzle's own textures have started, so they win the race
+    const id = setTimeout(preloadTextures, 1500)
+    return () => clearTimeout(id)
+  }, [])
   useEffect(() => {
     const level = buildLevel(seed, sil)
     level.targetTexture.anisotropy = gl.capabilities.getMaxAnisotropy()

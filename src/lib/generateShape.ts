@@ -15,16 +15,41 @@ import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferG
 import { SHAPE_RADIUS } from './constants'
 import { randomQuaternion, range, type Rng } from './rng'
 
+/** Texture repeats per world unit, so every part shows detail at the same scale. */
+const UV_DENSITY = 1.1
+
+function scaleUv(geometry: BufferGeometry, u: number, v: number): BufferGeometry {
+  const uv = geometry.attributes.uv
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * u * UV_DENSITY, uv.getY(i) * v * UV_DENSITY)
+  return geometry
+}
+
+/** Planar UVs along each face's dominant axis; right for flat-faced parts whose own UVs stretch per face. */
+function boxProjectUv(geometry: BufferGeometry): BufferGeometry {
+  const pos = geometry.attributes.position
+  const nor = geometry.attributes.normal
+  const uv = geometry.attributes.uv
+  for (let i = 0; i < pos.count; i++) {
+    const ax = Math.abs(nor.getX(i))
+    const ay = Math.abs(nor.getY(i))
+    const az = Math.abs(nor.getZ(i))
+    const [a, b] =
+      ax >= ay && ax >= az ? [pos.getZ(i), pos.getY(i)] : ay >= az ? [pos.getX(i), pos.getZ(i)] : [pos.getX(i), pos.getY(i)]
+    uv.setXY(i, a * UV_DENSITY, b * UV_DENSITY)
+  }
+  return geometry
+}
+
 /** Torus arc with sphere caps on the open tube ends, merged into one geometry. */
 function cappedArc(rng: Rng): BufferGeometry {
   const radius = range(rng, 0.35, 0.6)
   const tube = range(rng, 0.07, 0.14)
   const arc = range(rng, Math.PI, Math.PI * 2)
-  const torus = new TorusGeometry(radius, tube, 10, 32, arc)
+  const torus = scaleUv(new TorusGeometry(radius, tube, 10, 32, arc), arc * radius, Math.PI * 2 * tube)
   if (arc > Math.PI * 1.97) return torus
 
   const caps = [0, arc].map((a) => {
-    const cap = new SphereGeometry(tube, 10, 8)
+    const cap = scaleUv(new SphereGeometry(tube, 10, 8), Math.PI * 2 * tube, Math.PI * tube)
     cap.translate(Math.cos(a) * radius, Math.sin(a) * radius, 0)
     return cap
   })
@@ -46,7 +71,8 @@ function starPrism(rng: Rng): BufferGeometry {
     if (i === 0) shape.moveTo(x, y)
     else shape.lineTo(x, y)
   }
-  const extruded = new ExtrudeGeometry(shape, { depth: range(rng, 0.15, 0.35), bevelEnabled: false })
+  // ExtrudeGeometry's default UVs are already in world units
+  const extruded = scaleUv(new ExtrudeGeometry(shape, { depth: range(rng, 0.15, 0.35), bevelEnabled: false }), 1, 1)
   // index it so it can merge with the other (indexed) primitives
   const indexed = mergeVertices(extruded)
   extruded.dispose()
@@ -64,27 +90,38 @@ function randomPart(rng: Rng): BufferGeometry {
   const kind = Math.floor(rng() * 8)
   switch (kind) {
     case 0:
-      return new BoxGeometry(range(rng, 0.15, 0.4), range(rng, 0.15, 0.4), range(rng, 0.7, 1.6))
+      return boxProjectUv(new BoxGeometry(range(rng, 0.15, 0.4), range(rng, 0.15, 0.4), range(rng, 0.7, 1.6)))
     case 1: {
       const r = range(rng, 0.12, 0.28)
-      return new CylinderGeometry(rng() < 0.35 ? 0 : r, r, range(rng, 0.7, 1.5), 20)
+      const top = rng() < 0.35 ? 0 : r
+      const height = range(rng, 0.7, 1.5)
+      return scaleUv(new CylinderGeometry(top, r, height, 20), Math.PI * (r + top), height)
     }
-    case 2:
-      return new CapsuleGeometry(range(rng, 0.1, 0.22), range(rng, 0.4, 1.1), 4, 16)
+    case 2: {
+      const r = range(rng, 0.1, 0.22)
+      const length = range(rng, 0.4, 1.1)
+      return scaleUv(new CapsuleGeometry(r, length, 4, 16), Math.PI * 2 * r, length + 2 * r)
+    }
     case 3:
       return cappedArc(rng)
     case 4: {
-      const ellipsoid = new SphereGeometry(range(rng, 0.2, 0.35), 16, 12)
-      ellipsoid.scale(1, range(rng, 0.5, 1.6), range(rng, 0.4, 1))
+      const r = range(rng, 0.2, 0.35)
+      const ellipsoid = new SphereGeometry(r, 16, 12)
+      const sy = range(rng, 0.5, 1.6)
+      const sz = range(rng, 0.4, 1)
+      scaleUv(ellipsoid, Math.PI * 2 * r * ((1 + sz) / 2), Math.PI * r * sy)
+      ellipsoid.scale(1, sy, sz)
       return ellipsoid
     }
     case 5: {
       const r = range(rng, 0.15, 0.3)
-      return new CylinderGeometry(r, r, range(rng, 0.5, 1.3), 3 + Math.floor(rng() * 4))
+      return boxProjectUv(new CylinderGeometry(r, r, range(rng, 0.5, 1.3), 3 + Math.floor(rng() * 4)))
     }
     case 6: {
       const [p, q] = KNOTS[Math.floor(rng() * KNOTS.length)]
-      return new TorusKnotGeometry(range(rng, 0.22, 0.35), range(rng, 0.05, 0.09), 64, 8, p, q)
+      const radius = range(rng, 0.22, 0.35)
+      const tube = range(rng, 0.05, 0.09)
+      return scaleUv(new TorusKnotGeometry(radius, tube, 64, 8, p, q), Math.PI * 2 * radius * Math.max(p, q), Math.PI * 2 * tube)
     }
     default:
       return starPrism(rng)
