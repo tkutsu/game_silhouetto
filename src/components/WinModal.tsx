@@ -6,10 +6,10 @@ function shareText(mode: 'daily' | 'practice', seed: string, time: number, match
   const base = `${location.origin}${location.pathname}`
   const stats = `⏱ ${formatTime(time)} · 🎯 ${(match * 100).toFixed(1)}%`
   if (mode === 'practice') {
-    return `Shadow practice 🌗\n${stats}\n${base}?p=${seed.slice(PRACTICE_PREFIX.length)}`
+    return `Silhouetto practice 🌗\n${stats}\n${base}?p=${seed.slice(PRACTICE_PREFIX.length)}`
   }
   const days = streak(loadResults())
-  return `Shadow #${puzzleNumber()} 🌑\n${stats}${days > 1 ? `\n🔥 ${days}-day streak` : ''}\n${base}`
+  return `Silhouetto #${puzzleNumber()} 🌑\n${stats}${days > 1 ? `\n🔥 ${days}-day streak` : ''}\n${base}`
 }
 
 export function WinModal() {

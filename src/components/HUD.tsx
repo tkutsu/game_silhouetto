@@ -50,7 +50,7 @@ export function HUD() {
     <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-4 sm:p-6">
       <header className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Shadow</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Silhouetto</h1>
           <p className="text-sm text-slate-400">
             {mode === 'daily' ? `Daily #${puzzleNumber()} · ${dateKey()}` : 'Practice'}
           </p>

@@ -1,4 +1,4 @@
-# Shadow — daily 3D shadow-matching puzzle
+# Silhouetto — daily 3D shadow-matching puzzle
 
 Rotate an abstract 3D shape until its cast shadow matches a target silhouette on the wall.
 Daily puzzle (same seed for everyone) + endless practice mode (random seeds). Fully static,
@@ -63,7 +63,7 @@ is by silhouette overlap, so symmetries are automatically fair).
 
 - Puzzle number = days since epoch date. Timer starts on first drag.
 - On win: modal with time + final match %, streak, and copy-to-clipboard share text:
-  `Shadow #42 🌑 2:13 · 97.8%` (+ emoji bar for flair).
+  `Silhouetto #42 🌑 2:13 · 97.8%` (+ emoji bar for flair).
 - localStorage: per-day completion, times, streak. Practice mode ("random puzzle" button)
   doesn't touch stats.
 

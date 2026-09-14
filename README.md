@@ -1,4 +1,4 @@
-# Shadow
+# Silhouetto
 
 A daily 3D shadow-matching puzzle. Rotate an abstract shape until its shadow on the wall fits the glowing outline.
 
