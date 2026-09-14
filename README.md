@@ -4,14 +4,16 @@ A daily 3D shadow-matching puzzle. Rotate an abstract shape until its shadow on 
 
 Play at [silhouetto.themos.dev](https://silhouetto.themos.dev).
 
-- **Daily puzzle**: the same seeded shape for everyone each day, with a timer, streaks, and a shareable result.
-- **Practice**: random seeded puzzles, shareable by link (`?p=<seed>`).
+- **Daily first**: the same seeded shape for everyone each day, with a timer, streaks, and a shareable result.
+- **Then endless**: after the daily (or if it's already solved), "Next puzzle" serves random ones. Any puzzle is shareable by link (`?p=<seed>`).
 
 ## How it works
 
 Levels are generated, not authored. A seed builds a random cluster of primitives and picks a secret solution rotation. The shape's silhouette at that rotation is the target. Shapes whose silhouettes are too easy to hit by chance get rejected deterministically.
 
-The shadow light, the target overlay, and the scoring all share one orthographic projection, so they line up exactly. The match score is the IoU (intersection over union) of the current and target silhouettes, rendered offscreen at 128×128.
+The shadow light, the target overlay, and the scoring all share one orthographic projection, so they line up exactly. The match score is the IoU (intersection over union) of the current and target silhouettes, rendered offscreen at 128×128. The target outline doubles as the progress meter: it warms from faint blue to gold as the match rises.
+
+Each part of the shape gets its own seeded material (20 styles, from brushed metal to bologna). Furry parts grow line-segment hair, soft parts jiggle on release; neither affects the score, which only ever sees the bare geometry.
 
 ## Controls
 

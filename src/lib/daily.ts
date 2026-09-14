@@ -14,7 +14,6 @@ export const dateKey = (d = new Date()) =>
 
 export const puzzleNumber = (d = new Date()) => Math.round((midnight(d).getTime() - EPOCH.getTime()) / DAY) + 1
 
-export const msUntilTomorrow = (d = new Date()) => midnight(d).getTime() + DAY - d.getTime()
 
 export function loadResults(): Record<string, Result> {
   try {

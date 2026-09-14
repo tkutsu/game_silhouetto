@@ -30,10 +30,11 @@ const seedFor = (mode: Mode) =>
   mode === 'daily' ? `daily-${dateKey()}` : PRACTICE_PREFIX + Math.random().toString(36).slice(2, 10)
 
 const sharedSeed = new URLSearchParams(location.search).get('p')
+const dailyDone = () => Boolean(loadResults()[dateKey()])
 
 export const useGame = create<GameState>((set, get) => ({
-  mode: sharedSeed ? 'practice' : 'daily',
-  seed: sharedSeed ? PRACTICE_PREFIX + sharedSeed : seedFor('daily'),
+  mode: sharedSeed || dailyDone() ? 'practice' : 'daily',
+  seed: sharedSeed ? PRACTICE_PREFIX + sharedSeed : dailyDone() ? seedFor('practice') : seedFor('daily'),
   level: null,
   match: 0,
   solved: false,
@@ -55,12 +56,7 @@ export const useGame = create<GameState>((set, get) => ({
       old.geometry.dispose()
       old.targetTexture.dispose()
     }
-    const prior = get().mode === 'daily' ? loadResults()[dateKey()] : undefined
-    set(
-      prior
-        ? { level, solved: true, match: prior.match, time: prior.time }
-        : { level, solved: false, match: 0, startedAt: null, time: null },
-    )
+    set({ level, solved: false, match: 0, startedAt: null, time: null })
   },
 
   setMatch: (match) => set({ match }),

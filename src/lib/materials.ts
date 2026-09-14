@@ -59,6 +59,15 @@ interface Style {
   metalness?: number
   roughness?: number
   opacity?: number
+  /** Soft materials get squash-and-stretch jiggle. */
+  bouncy?: boolean
+  /** Hair color for parts that grow line-segment fur. */
+  hair?: string
+}
+
+export interface PartStyle {
+  bouncy: boolean
+  hair: string | null
 }
 
 const STYLES: Style[] = [
@@ -82,6 +91,7 @@ const STYLES: Style[] = [
   {
     // cow
     roughness: 0.9,
+    bouncy: true,
     draw(ctx, rng) {
       base(ctx, '#fdfdf6')
       blobs(ctx, rng, '#241f1c', 7 + Math.floor(rng() * 4), [18, 45], [14, 34])
@@ -90,6 +100,7 @@ const STYLES: Style[] = [
   {
     // patchwork with stitches
     roughness: 1,
+    bouncy: true,
     draw(ctx, rng) {
       const n = 4
       const s = SIZE / n
@@ -130,6 +141,7 @@ const STYLES: Style[] = [
   {
     // polka dots
     roughness: 0.85,
+    bouncy: true,
     draw(ctx, rng) {
       base(ctx, pastel(rng))
       ctx.fillStyle = 'rgba(255,255,255,0.9)'
@@ -203,6 +215,8 @@ const STYLES: Style[] = [
   {
     // fur
     roughness: 1,
+    bouncy: true,
+    hair: '#9c6530',
     draw(ctx, rng) {
       base(ctx, '#c98a4b')
       strokes(ctx, rng, ['#8a5a28', '#e3aa6b', '#a5713a', '#f0c896'], 700, [10, 20], 0.5, 0.3)
@@ -232,6 +246,7 @@ const STYLES: Style[] = [
   {
     // denim
     roughness: 0.95,
+    bouncy: true,
     draw(ctx, rng) {
       base(ctx, '#3b5b8f')
       ctx.lineWidth = 1
@@ -372,6 +387,17 @@ const STYLES: Style[] = [
     },
   },
   {
+    // bologna
+    roughness: 0.65,
+    bouncy: true,
+    draw(ctx, rng) {
+      base(ctx, '#e59aa7')
+      speckle(ctx, rng, ['#d4838f', '#f2b3bd'], 500)
+      blobs(ctx, rng, 'rgba(250,246,240,0.95)', 14 + Math.floor(rng() * 6), [4, 12], [4, 11])
+      blobs(ctx, rng, '#7a9e4f', 3, [2.5, 4], [2.5, 4])
+    },
+  },
+  {
     // bee
     roughness: 0.8,
     draw(ctx) {
@@ -401,14 +427,16 @@ const STYLES: Style[] = [
 ]
 
 /** One seeded material per merged-geometry group, cycling through shuffled styles. */
-export function createPartMaterials(seed: string, count: number): MeshStandardMaterial[] {
+export function createPartMaterials(seed: string, count: number) {
   const rng = rngFor(`${seed}#materials`)
   const order = STYLES.map((_, i) => i)
   for (let i = order.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1))
     ;[order[i], order[j]] = [order[j], order[i]]
   }
-  return Array.from({ length: count }, (_, i) => {
+  const materials: MeshStandardMaterial[] = []
+  const styles: PartStyle[] = []
+  for (let i = 0; i < count; i++) {
     const style = STYLES[order[i % order.length]]
     const canvas = document.createElement('canvas')
     canvas.width = canvas.height = SIZE
@@ -417,13 +445,17 @@ export function createPartMaterials(seed: string, count: number): MeshStandardMa
     const map = new CanvasTexture(canvas)
     map.colorSpace = SRGBColorSpace
     map.wrapS = map.wrapT = RepeatWrapping
-    return new MeshStandardMaterial({
-      map,
-      metalness: style.metalness ?? 0,
-      roughness: style.roughness ?? 0.8,
-      transparent: style.opacity !== undefined,
-      opacity: style.opacity ?? 1,
-      side: DoubleSide,
-    })
-  })
+    materials.push(
+      new MeshStandardMaterial({
+        map,
+        metalness: style.metalness ?? 0,
+        roughness: style.roughness ?? 0.8,
+        transparent: style.opacity !== undefined,
+        opacity: style.opacity ?? 1,
+        side: DoubleSide,
+      }),
+    )
+    styles.push({ bouncy: style.bouncy ?? false, hair: style.hair ?? null })
+  }
+  return { materials, styles }
 }

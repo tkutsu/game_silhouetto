@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { formatTime, loadResults, msUntilTomorrow, puzzleNumber, streak } from '../lib/daily'
+import { formatTime, loadResults, puzzleNumber, streak } from '../lib/daily'
 import { PRACTICE_PREFIX, useGame } from '../state/store'
 
 function shareText(mode: 'daily' | 'practice', seed: string, time: number, match: number) {
@@ -35,8 +35,6 @@ export function WinModal() {
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
-  const hours = Math.floor(msUntilTomorrow() / 3_600_000)
-  const minutes = Math.floor((msUntilTomorrow() % 3_600_000) / 60_000)
 
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]">
@@ -55,22 +53,20 @@ export function WinModal() {
           </div>
         </div>
         {mode === 'daily' && (
-          <p className="mb-5 text-sm text-slate-400">
-            🔥 {streak(loadResults())}-day streak · next in {hours}h {minutes}m
-          </p>
+          <p className="mb-5 text-sm text-slate-400">🔥 {streak(loadResults())}-day streak</p>
         )}
         <div className="flex flex-col gap-2">
           <button
             className="rounded-full bg-amber-400 py-2 font-medium text-slate-900 hover:bg-amber-300"
-            onClick={share}
+            onClick={() => play('practice')}
           >
-            {copied ? 'Copied!' : 'Share result'}
+            Next puzzle
           </button>
           <button
             className="rounded-full border border-slate-700 py-2 text-slate-300 hover:border-slate-500"
-            onClick={() => play('practice')}
+            onClick={share}
           >
-            {mode === 'daily' ? 'Play a random puzzle' : 'Another one'}
+            {copied ? 'Copied!' : 'Share result'}
           </button>
           <button className="text-sm text-slate-500 hover:text-slate-300" onClick={() => setOpen(false)}>
             Admire it

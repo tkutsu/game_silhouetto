@@ -30,17 +30,18 @@ export function Scene() {
     <Canvas shadows="percentage" className="touch-none" camera={{ position: [5.2, 1.6, 6.4], fov: FOV }}>
       <CameraRig />
       <color attach="background" args={['#081120']} />
-      <ambientLight intensity={0.45} />
+      <ambientLight intensity={0.22} />
       <directionalLight
         position={[0, 0, LIGHT_Z]}
-        intensity={2.2}
+        intensity={2.7}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-bias={-0.0005}
       >
         <orthographicCamera attach="shadow-camera" args={[-S, S, S, -S, 0.1, LIGHT_Z * 2]} />
       </directionalLight>
-      <directionalLight position={[4, 5, 0.5]} intensity={1.1} color="#cfe0ff" />
+      <directionalLight position={[4, 5, 2]} intensity={0.55} color="#cfe0ff" />
+      <directionalLight position={[-5, 4, -3]} intensity={1.1} color="#a8c8ff" />
       <Wall />
       <LevelView />
     </Canvas>
