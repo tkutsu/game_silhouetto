@@ -26,16 +26,16 @@ function MatchMeter() {
 
   return (
     <div className="w-72 max-w-[80vw]">
-      <div className="mb-1.5 flex items-baseline justify-between text-xs uppercase tracking-widest text-stone-400">
+      <div className="mb-1.5 flex items-baseline justify-between text-xs uppercase tracking-widest text-slate-400">
         <span>{solved ? 'Matched' : 'Match'}</span>
-        <span className="font-mono text-base text-stone-100">{pct}%</span>
+        <span className="font-mono text-base text-slate-100">{pct}%</span>
       </div>
-      <div className="relative h-2 overflow-hidden rounded-full bg-stone-800">
+      <div className="relative h-2 overflow-hidden rounded-full bg-slate-800">
         <div
           className="h-full rounded-full transition-[width] duration-150"
           style={{ width: `${pct}%`, background: solved ? '#f5c451' : `hsl(${hue} 85% 60%)` }}
         />
-        <div className="absolute inset-y-0 w-0.5 bg-stone-300/60" style={{ left: `${WIN_IOU * 100}%` }} />
+        <div className="absolute inset-y-0 w-0.5 bg-slate-300/60" style={{ left: `${WIN_IOU * 100}%` }} />
       </div>
     </div>
   )
@@ -51,14 +51,14 @@ export function HUD() {
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Shadow</h1>
-          <p className="text-sm text-stone-400">
+          <p className="text-sm text-slate-400">
             {mode === 'daily' ? `Daily #${puzzleNumber()} · ${dateKey()}` : 'Practice'}
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm">
           <Timer />
           <button
-            className="pointer-events-auto rounded-full border border-stone-700 px-3 py-1.5 text-stone-300 hover:border-stone-500 hover:text-white"
+            className="pointer-events-auto rounded-full border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-slate-500 hover:text-white"
             onClick={() => play(mode === 'daily' ? 'practice' : 'daily')}
           >
             {mode === 'daily' ? 'Random puzzle' : 'Back to daily'}
@@ -67,13 +67,13 @@ export function HUD() {
       </header>
 
       {!level && (
-        <p className="self-center animate-pulse text-sm tracking-widest text-stone-400 uppercase">Casting shadows…</p>
+        <p className="self-center animate-pulse text-sm tracking-widest text-slate-400 uppercase">Casting shadows…</p>
       )}
 
       <footer className="flex flex-col items-center gap-3">
         <MatchMeter />
-        <p className="text-center text-xs text-stone-500">
-          Drag to rotate · Scroll, twist or Q/E to spin · Fit the shadow into the outline
+        <p className="text-center text-xs text-slate-500">
+          Drag the shape to tumble it · Drag the shadow to turn it like a dial · Fit it into the outline
         </p>
       </footer>
     </div>

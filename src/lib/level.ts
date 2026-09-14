@@ -1,7 +1,8 @@
-import type { BufferGeometry, DataTexture, Quaternion } from 'three'
+import type { BufferGeometry, CanvasTexture, Quaternion } from 'three'
 import { DEGENERATE_IOU, SCORE_RES, TARGET_RES } from './constants'
+import { puzzleNumber } from './daily'
 import { generateShape } from './generateShape'
-import { randomQuaternion, rngFor } from './rng'
+import { hashString, randomQuaternion, rngFor } from './rng'
 import { coverage, iou, maskTexture, type Mask, type Silhouetter } from './silhouette'
 
 export interface Level {
@@ -10,7 +11,7 @@ export interface Level {
   solution: Quaternion
   start: Quaternion
   target: Mask
-  targetTexture: DataTexture
+  targetTexture: CanvasTexture
 }
 
 const PROBES = 24
@@ -42,7 +43,8 @@ export function buildLevel(seed: string, sil: Silhouetter): Level {
         return { q, score: iou(sil.render(geometry, q, SCORE_RES), target) }
       })
       const start = starts.reduce((a, b) => (b.score < a.score ? b : a)).q
-      const targetTexture = maskTexture(sil.render(geometry, solution, TARGET_RES), TARGET_RES)
+      const label = seed.startsWith('daily-') ? `FIG. ${puzzleNumber()}` : `FIG. ${100 + (hashString(seed) % 900)}`
+      const targetTexture = maskTexture(sil.render(geometry, solution, TARGET_RES), TARGET_RES, label)
       return { seed, geometry, solution, start, target, targetTexture }
     }
     geometry.dispose()

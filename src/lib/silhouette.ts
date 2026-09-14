@@ -1,8 +1,7 @@
 import {
+  CanvasTexture,
   Color,
-  DataTexture,
   DoubleSide,
-  LinearFilter,
   Mesh,
   MeshBasicMaterial,
   OrthographicCamera,
@@ -71,28 +70,66 @@ export function iou(a: Mask, b: Mask): number {
 
 export const coverage = (mask: Mask) => mask.reduce((n, v) => n + v, 0) / mask.length
 
-/** Outline + faint fill texture for drawing the target on the wall. */
-export function maskTexture(mask: Mask, res: number, stroke = 3): DataTexture {
-  const data = new Uint8Array(res * res * 4)
-  const at = (x: number, y: number) => x >= 0 && y >= 0 && x < res && y < res && mask[y * res + x] === 1
+/** Blueprint-style target: white outline, hatched fill, dashed dial ring with rotation arrows. */
+export function maskTexture(mask: Mask, res: number, label: string): CanvasTexture {
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = res
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('2d context unavailable')
 
+  const at = (x: number, y: number) => x >= 0 && y >= 0 && x < res && y < res && mask[y * res + x] === 1
+  const img = ctx.createImageData(res, res)
   for (let y = 0; y < res; y++) {
     for (let x = 0; x < res; x++) {
       if (!at(x, y)) continue
       let edge = false
-      for (let d = 1; d <= stroke && !edge; d++) {
+      for (let d = 1; d <= 3 && !edge; d++) {
         edge = !at(x + d, y) || !at(x - d, y) || !at(x, y + d) || !at(x, y - d)
       }
-      const i = (y * res + x) * 4
-      data[i] = data[i + 1] = data[i + 2] = 255
-      data[i + 3] = edge ? 255 : 40
+      // canvas rows run top-down; the mask (from readPixels) runs bottom-up
+      const i = ((res - 1 - y) * res + x) * 4
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = 255
+      img.data[i + 3] = edge ? 255 : (x + y) % 7 < 2 ? 90 : 32
     }
   }
+  ctx.putImageData(img, 0, 0)
 
-  const tex = new DataTexture(data, res, res)
+  const c = res / 2
+  const r = res * 0.47
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)'
+  ctx.lineWidth = Math.max(1, res / 256)
+  ctx.setLineDash([res / 64, res / 96])
+  ctx.beginPath()
+  ctx.arc(c, c, r, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.setLineDash([])
+  for (let k = 0; k < 4; k++) {
+    const a = (k * Math.PI) / 2
+    ctx.beginPath()
+    ctx.moveTo(c + Math.cos(a) * (r - res / 48), c + Math.sin(a) * (r - res / 48))
+    ctx.lineTo(c + Math.cos(a) * (r + res / 48), c + Math.sin(a) * (r + res / 48))
+    ctx.stroke()
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.7)'
+  for (const base of [Math.PI / 4, Math.PI + Math.PI / 4]) {
+    const ax = c + Math.cos(base) * r
+    const ay = c + Math.sin(base) * r
+    const t = base + Math.PI / 2
+    const size = res / 36
+    ctx.beginPath()
+    ctx.moveTo(ax + Math.cos(t) * size, ay + Math.sin(t) * size)
+    ctx.lineTo(ax + Math.cos(base) * size * 0.6, ay + Math.sin(base) * size * 0.6)
+    ctx.lineTo(ax - Math.cos(base) * size * 0.6, ay - Math.sin(base) * size * 0.6)
+    ctx.closePath()
+    ctx.fill()
+  }
+
+  ctx.font = `${res / 24}px ui-monospace, monospace`
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'
+  ctx.textAlign = 'center'
+  ctx.fillText(label, c, res * 0.99)
+
+  const tex = new CanvasTexture(canvas)
   tex.colorSpace = SRGBColorSpace
-  tex.magFilter = LinearFilter
-  tex.minFilter = LinearFilter
-  tex.needsUpdate = true
   return tex
 }

@@ -1,5 +1,6 @@
-import { useThree } from '@react-three/fiber'
-import { useEffect, useMemo } from 'react'
+import { useFrame, useThree } from '@react-three/fiber'
+import { useEffect, useMemo, useRef } from 'react'
+import type { MeshBasicMaterial } from 'three'
 import { FRAME, WALL_Z } from '../lib/constants'
 import { buildLevel } from '../lib/level'
 import { Silhouetter } from '../lib/silhouette'
@@ -12,6 +13,12 @@ export function LevelView() {
   const level = useGame((s) => s.level)
   const solved = useGame((s) => s.solved)
   const sil = useMemo(() => new Silhouetter(gl), [gl])
+  const overlay = useRef<MeshBasicMaterial>(null)
+
+  useFrame(({ clock }) => {
+    const m = overlay.current
+    if (m) m.opacity = useGame.getState().solved ? 0.75 + Math.sin(clock.elapsedTime * 3) * 0.25 : 1
+  })
 
   useEffect(() => () => sil.dispose(), [sil])
   useEffect(() => {
@@ -25,8 +32,9 @@ export function LevelView() {
       <mesh position={[0, 0, WALL_Z + 0.01]}>
         <planeGeometry args={[FRAME * 2, FRAME * 2]} />
         <meshBasicMaterial
+          ref={overlay}
           map={level.targetTexture}
-          color={solved ? '#f5c451' : '#38bdf8'}
+          color={solved ? '#f5c451' : '#e3f1ff'}
           transparent
           depthWrite={false}
           toneMapped={false}

@@ -50,7 +50,7 @@ export function generateShape(rng: Rng): BufferGeometry {
     parts.push(part)
   }
 
-  const merged = mergeGeometries(parts)
+  const merged = mergeGeometries(parts, true)
   parts.forEach((p) => p.dispose())
   if (!merged) throw new Error('Failed to merge shape geometry')
 

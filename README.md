@@ -13,8 +13,8 @@ The shadow light, the target overlay, and the scoring all share one orthographic
 
 ## Controls
 
-- Drag: rotate
-- Scroll, two-finger twist, or Q/E: spin around the light axis
+- Drag the shape: tumble it
+- Drag the shadow: turn it like a dial (or scroll / two-finger twist / Q/E)
 - Arrow keys: rotate
 
 ## Development

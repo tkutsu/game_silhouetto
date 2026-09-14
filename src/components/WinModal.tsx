@@ -22,7 +22,7 @@ export function WinModal() {
   if (!open) {
     return (
       <button
-        className="absolute top-20 left-1/2 -translate-x-1/2 rounded-full bg-amber-400 px-4 py-1.5 text-sm font-medium text-stone-900 shadow-lg"
+        className="absolute top-20 left-1/2 -translate-x-1/2 rounded-full bg-amber-400 px-4 py-1.5 text-sm font-medium text-slate-900 shadow-lg"
         onClick={() => setOpen(true)}
       >
         Results
@@ -40,39 +40,39 @@ export function WinModal() {
 
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]">
-      <div className="w-full max-w-xs rounded-2xl border border-stone-700 bg-stone-900/95 p-6 text-center shadow-2xl">
+      <div className="w-full max-w-xs rounded-2xl border border-slate-700 bg-slate-900/95 p-6 text-center shadow-2xl">
         <p className="text-xs tracking-widest text-amber-400 uppercase">
           {mode === 'daily' ? `Daily #${puzzleNumber()}` : 'Practice'} solved
         </p>
         <div className="my-5 grid grid-cols-2 gap-3">
           <div>
             <div className="font-mono text-3xl">{formatTime(time)}</div>
-            <div className="text-xs text-stone-400">time</div>
+            <div className="text-xs text-slate-400">time</div>
           </div>
           <div>
             <div className="font-mono text-3xl">{Math.round(match * 100)}%</div>
-            <div className="text-xs text-stone-400">match</div>
+            <div className="text-xs text-slate-400">match</div>
           </div>
         </div>
         {mode === 'daily' && (
-          <p className="mb-5 text-sm text-stone-400">
+          <p className="mb-5 text-sm text-slate-400">
             🔥 {streak(loadResults())}-day streak · next in {hours}h {minutes}m
           </p>
         )}
         <div className="flex flex-col gap-2">
           <button
-            className="rounded-full bg-amber-400 py-2 font-medium text-stone-900 hover:bg-amber-300"
+            className="rounded-full bg-amber-400 py-2 font-medium text-slate-900 hover:bg-amber-300"
             onClick={share}
           >
             {copied ? 'Copied!' : 'Share result'}
           </button>
           <button
-            className="rounded-full border border-stone-700 py-2 text-stone-300 hover:border-stone-500"
+            className="rounded-full border border-slate-700 py-2 text-slate-300 hover:border-slate-500"
             onClick={() => play('practice')}
           >
             {mode === 'daily' ? 'Play a random puzzle' : 'Another one'}
           </button>
-          <button className="text-sm text-stone-500 hover:text-stone-300" onClick={() => setOpen(false)}>
+          <button className="text-sm text-slate-500 hover:text-slate-300" onClick={() => setOpen(false)}>
             Admire it
           </button>
         </div>
