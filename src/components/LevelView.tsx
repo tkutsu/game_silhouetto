@@ -1,10 +1,10 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import type { MeshBasicMaterial } from 'three'
-import { FRAME, SCORE_RES, WALL_Z, WIN_IOU } from '../lib/constants'
+import { FRAME, WALL_Z, WIN_IOU } from '../lib/constants'
 import { buildLevel } from '../lib/level'
 import { Annotation } from './Annotation'
-import { createFeedbackTexture, Silhouetter } from '../lib/silhouette'
+import { Silhouetter } from '../lib/silhouette'
 import { useGame } from '../state/store'
 import { Shape } from './Shape'
 
@@ -16,7 +16,6 @@ export function LevelView() {
   const didTumble = useGame((s) => s.didTumble)
   const didSpin = useGame((s) => s.didSpin)
   const sil = useMemo(() => new Silhouetter(gl), [gl])
-  const feedback = useMemo(() => createFeedbackTexture(SCORE_RES), [])
   const overlay = useRef<MeshBasicMaterial>(null)
 
   // The outline itself is the progress meter: cold faint blue far away,
@@ -36,7 +35,6 @@ export function LevelView() {
   })
 
   useEffect(() => () => sil.dispose(), [sil])
-  useEffect(() => () => feedback.dispose(), [feedback])
   useEffect(() => {
     const level = buildLevel(seed, sil)
     level.targetTexture.anisotropy = gl.capabilities.getMaxAnisotropy()
@@ -46,11 +44,7 @@ export function LevelView() {
   if (!level) return null
   return (
     <>
-      <Shape key={level.seed} level={level} sil={sil} feedback={feedback} />
-      <mesh position={[0, 0, WALL_Z + 0.005]}>
-        <planeGeometry args={[FRAME * 2, FRAME * 2]} />
-        <meshBasicMaterial map={feedback} transparent depthWrite={false} toneMapped={false} />
-      </mesh>
+      <Shape key={level.seed} level={level} sil={sil} />
       <mesh position={[0, 0, WALL_Z + 0.01]}>
         <planeGeometry args={[FRAME * 2, FRAME * 2]} />
         <meshBasicMaterial

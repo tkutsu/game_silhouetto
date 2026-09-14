@@ -1,10 +1,10 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
-import { Plane, Quaternion, Raycaster, Vector2, Vector3, type DataTexture, type Mesh } from 'three'
+import { Plane, Quaternion, Raycaster, Vector2, Vector3, type Mesh } from 'three'
 import { FRAME, SCORE_RES, WALL_Z, WIN_IOU } from '../lib/constants'
 import type { Level } from '../lib/level'
 import { createPartMaterials } from '../lib/materials'
-import { iou, paintFeedback, type Silhouetter } from '../lib/silhouette'
+import { iou, type Silhouetter } from '../lib/silhouette'
 import { useGame } from '../state/store'
 
 const DRAG_SPEED = 0.008
@@ -32,7 +32,7 @@ interface PointerState {
   angle: number
 }
 
-export function Shape({ level, sil, feedback }: { level: Level; sil: Silhouetter; feedback: DataTexture }) {
+export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
   const gl = useThree((state) => state.gl)
   const camera = useThree((state) => state.camera)
   const mesh = useRef<Mesh>(null)
@@ -222,9 +222,7 @@ export function Shape({ level, sil, feedback }: { level: Level; sil: Silhouetter
 
       const verdict = s.unchecked && !s.dragging && s.vel.lengthSq() === 0 && now - s.lastInput > SETTLE_MS
       if (verdict || (s.dirty && now - s.lastScore > SCORE_MS)) {
-        const mask = sil.render(level.geometry, s.q, SCORE_RES)
-        const match = iou(mask, level.target)
-        paintFeedback(feedback, mask, level.target, match)
+        const match = iou(sil.render(level.geometry, s.q, SCORE_RES), level.target)
         s.dirty = false
         s.lastScore = now
         game.setMatch(match)
