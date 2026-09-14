@@ -1,6 +1,8 @@
 import {
   CanvasTexture,
   Color,
+  DataTexture,
+  LinearFilter,
   DoubleSide,
   Mesh,
   MeshBasicMaterial,
@@ -136,4 +138,40 @@ export function maskTexture(mask: Mask, res: number, label: string): CanvasTextu
   const tex = new CanvasTexture(canvas)
   tex.colorSpace = SRGBColorSpace
   return tex
+}
+
+/** Blank texture the scoring loop paints the live overlap into. */
+export function createFeedbackTexture(res: number): DataTexture {
+  const tex = new DataTexture(new Uint8Array(res * res * 4), res, res)
+  tex.colorSpace = SRGBColorSpace
+  tex.magFilter = LinearFilter
+  tex.minFilter = LinearFilter
+  tex.needsUpdate = true
+  return tex
+}
+
+/**
+ * Gold where the shadow already covers the target (brighter as the match rises),
+ * red where it spills outside. Uncovered target stays empty so the outline reads as "fill me".
+ */
+export function paintFeedback(tex: DataTexture, current: Mask, target: Mask, match: number) {
+  const data = tex.image.data as Uint8Array
+  const hitAlpha = Math.round(70 + 150 * Math.min(Math.max((match - 0.35) / 0.55, 0), 1))
+  for (let i = 0; i < current.length; i++) {
+    const j = i * 4
+    if (current[i] && target[i]) {
+      data[j] = 255
+      data[j + 1] = 200
+      data[j + 2] = 70
+      data[j + 3] = hitAlpha
+    } else if (current[i]) {
+      data[j] = 255
+      data[j + 1] = 80
+      data[j + 2] = 90
+      data[j + 3] = 120
+    } else {
+      data[j + 3] = 0
+    }
+  }
+  tex.needsUpdate = true
 }

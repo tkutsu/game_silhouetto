@@ -1,18 +1,28 @@
 import { create } from 'zustand'
-import { dateKey, loadResults, saveResult } from '../lib/daily'
 import type { Level } from '../lib/level'
+import * as sound from '../lib/sound'
+import { loadStats, saveStats } from '../lib/stats'
 
-type Mode = 'daily' | 'practice'
+/** Seconds of celebration before the next puzzle loads. */
+const ADVANCE_MS = 1600
+const MUTE_KEY = 'silhouetto:muted'
+// kept from the old practice mode so links shared before the redesign still open the same puzzle
+const SEED_PREFIX = 'practice-'
 
 interface GameState {
-  mode: Mode
   seed: string
   level: Level | null
   match: number
+  /** Highest closeness step reached on this puzzle; each new one gets a chime. */
+  peak: number
   solved: boolean
   startedAt: number | null
   /** Final solve time in ms. */
   time: number | null
+  newBest: boolean
+  best: number | null
+  solvedCount: number
+  muted: boolean
   didTumble: boolean
   didSpin: boolean
   markTumble: () => void
@@ -21,25 +31,31 @@ interface GameState {
   setMatch: (match: number) => void
   begin: () => void
   solve: (match: number) => void
-  play: (mode: Mode) => void
+  next: () => void
+  toggleMute: () => void
 }
 
-export const PRACTICE_PREFIX = 'practice-'
+const randomId = () => Math.random().toString(36).slice(2, 10)
 
-const seedFor = (mode: Mode) =>
-  mode === 'daily' ? `daily-${dateKey()}` : PRACTICE_PREFIX + Math.random().toString(36).slice(2, 10)
+function seedFromUrl(id: string) {
+  history.replaceState(null, '', `${location.pathname}?p=${id}`)
+  return SEED_PREFIX + id
+}
 
-const sharedSeed = new URLSearchParams(location.search).get('p')
-const dailyDone = () => Boolean(loadResults()[dateKey()])
+const stats = loadStats()
 
 export const useGame = create<GameState>((set, get) => ({
-  mode: sharedSeed || dailyDone() ? 'practice' : 'daily',
-  seed: sharedSeed ? PRACTICE_PREFIX + sharedSeed : dailyDone() ? seedFor('practice') : seedFor('daily'),
+  seed: seedFromUrl(new URLSearchParams(location.search).get('p') ?? randomId()),
   level: null,
   match: 0,
+  peak: 0,
   solved: false,
   startedAt: null,
   time: null,
+  newBest: false,
+  best: stats.best,
+  solvedCount: stats.solved,
+  muted: localStorage.getItem(MUTE_KEY) === '1',
   didTumble: false,
   didSpin: false,
 
@@ -56,27 +72,45 @@ export const useGame = create<GameState>((set, get) => ({
       old.geometry.dispose()
       old.targetTexture.dispose()
     }
-    set({ level, solved: false, match: 0, startedAt: null, time: null })
+    set({ level, solved: false, match: 0, peak: 0, startedAt: null, time: null, newBest: false })
   },
 
-  setMatch: (match) => set({ match }),
+  setMatch: (match) => {
+    const step = Math.floor((match - 0.4) / 0.05)
+    if (step > get().peak && get().startedAt !== null) {
+      if (!get().muted) sound.closer(step)
+      navigator.vibrate?.(8)
+      set({ match, peak: step })
+    } else {
+      set({ match })
+    }
+  },
 
   begin: () => {
     if (get().startedAt === null) set({ startedAt: performance.now() })
   },
 
   solve: (match) => {
-    const { startedAt, mode } = get()
+    const { startedAt, best, solvedCount, seed } = get()
     const time = startedAt === null ? 0 : performance.now() - startedAt
-    set({ solved: true, match, time })
-    if (mode === 'daily') saveResult(dateKey(), { time, match })
+    const newBest = best === null || time < best
+    const next = { best: newBest ? time : best, solved: solvedCount + 1 }
+    saveStats(next)
+    if (!get().muted) sound.win()
+    navigator.vibrate?.([20, 40, 30])
+    set({ solved: true, match, time, newBest, best: next.best, solvedCount: next.solved })
+    setTimeout(() => {
+      if (get().seed === seed) get().next()
+    }, ADVANCE_MS)
   },
 
-  play: (mode) => {
-    const { level } = get()
-    level?.geometry.dispose()
-    level?.targetTexture.dispose()
-    history.replaceState(null, '', location.pathname)
-    set({ mode, seed: seedFor(mode), level: null })
+  next: () => {
+    set({ seed: seedFromUrl(randomId()) })
+  },
+
+  toggleMute: () => {
+    const muted = !get().muted
+    localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
+    set({ muted })
   },
 }))

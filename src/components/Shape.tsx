@@ -1,11 +1,10 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
-import { Plane, Quaternion, Raycaster, Vector2, Vector3, type Mesh } from 'three'
+import { Plane, Quaternion, Raycaster, Vector2, Vector3, type DataTexture, type Mesh } from 'three'
 import { FRAME, SCORE_RES, WALL_Z, WIN_IOU } from '../lib/constants'
 import type { Level } from '../lib/level'
-import { buildHair } from '../lib/hair'
 import { createPartMaterials } from '../lib/materials'
-import { iou, type Silhouetter } from '../lib/silhouette'
+import { iou, paintFeedback, type Silhouetter } from '../lib/silhouette'
 import { useGame } from '../state/store'
 
 const DRAG_SPEED = 0.008
@@ -33,26 +32,19 @@ interface PointerState {
   angle: number
 }
 
-export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
+export function Shape({ level, sil, feedback }: { level: Level; sil: Silhouetter; feedback: DataTexture }) {
   const gl = useThree((state) => state.gl)
   const camera = useThree((state) => state.camera)
   const mesh = useRef<Mesh>(null)
-  const { materials, styles } = useMemo(
-    () => createPartMaterials(level.seed, level.geometry.groups.length),
-    [level],
-  )
-  const hair = useMemo(() => buildHair(level.geometry, styles, level.seed), [level, styles])
-  const bounciness = styles.filter((p) => p.bouncy).length / Math.max(styles.length, 1)
+  const materials = useMemo(() => createPartMaterials(level.seed, level.geometry.groups.length), [level])
   const s = useRef({
-    q: (useGame.getState().solved ? level.solution : level.start).clone(),
+    q: level.start.clone(),
     vel: new Vector3(),
     dragging: false,
     snap: false,
     dirty: true,
     unchecked: false,
-    wobble: useGame.getState().solved ? 0 : 1,
-    jig: 0,
-    jigVel: 0,
+    wobble: 1,
     lastInput: 0,
     lastScore: 0,
   }).current
@@ -167,7 +159,6 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
       s.dragging = false
       el.style.cursor = 'default'
       if (performance.now() - lastMove > 60) s.vel.set(0, 0, 0)
-      s.jigVel += Math.min(s.vel.length() * 0.05 + 0.12, 0.6) * bounciness
     }
 
     const wheel = (e: WheelEvent) => {
@@ -229,13 +220,15 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
         if (w < 0.05) s.vel.set(0, 0, 0)
       }
 
-      const settled = !s.dragging && s.vel.lengthSq() === 0 && now - s.lastInput > SETTLE_MS
-      if ((settled && s.unchecked) || (s.dirty && now - s.lastScore > SCORE_MS)) {
-        const match = iou(sil.render(level.geometry, s.q, SCORE_RES), level.target)
+      const verdict = s.unchecked && !s.dragging && s.vel.lengthSq() === 0 && now - s.lastInput > SETTLE_MS
+      if (verdict || (s.dirty && now - s.lastScore > SCORE_MS)) {
+        const mask = sil.render(level.geometry, s.q, SCORE_RES)
+        const match = iou(mask, level.target)
+        paintFeedback(feedback, mask, level.target, match)
         s.dirty = false
         s.lastScore = now
         game.setMatch(match)
-        if (settled) {
+        if (verdict) {
           s.unchecked = false
           if (match >= WIN_IOU) {
             s.snap = s.q.angleTo(level.solution) < SNAP_ANGLE
@@ -249,13 +242,6 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
     if (!m) return
     m.quaternion.copy(s.q)
 
-    if (Math.abs(s.jig) > 1e-4 || Math.abs(s.jigVel) > 1e-4) {
-      s.jigVel += (-90 * s.jig - 6 * s.jigVel) * dt
-      s.jig += s.jigVel * dt
-      m.scale.set(1 - s.jig, 1 + s.jig * 1.4, 1 - s.jig * 0.5)
-    } else {
-      m.scale.set(1, 1, 1)
-    }
     if (s.wobble > 0.001) {
       const t = now / 1000
       wobbleQ
@@ -265,16 +251,5 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
     }
   })
 
-  return (
-    <mesh ref={mesh} geometry={level.geometry} material={materials} castShadow>
-      {hair.map((tuft, i) => (
-        <lineSegments key={i}>
-          <bufferGeometry>
-            <bufferAttribute attach="attributes-position" args={[tuft.positions, 3]} />
-          </bufferGeometry>
-          <lineBasicMaterial color={tuft.color} transparent opacity={0.85} />
-        </lineSegments>
-      ))}
-    </mesh>
-  )
+  return <mesh ref={mesh} geometry={level.geometry} material={materials} castShadow />
 }
