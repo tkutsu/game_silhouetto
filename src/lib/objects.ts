@@ -1,20 +1,6 @@
-import {
-  BoxGeometry,
-  BufferGeometry,
-  CapsuleGeometry,
-  CylinderGeometry,
-  ExtrudeGeometry,
-  Matrix4,
-  Shape as Shape2D,
-  SphereGeometry,
-  TorusGeometry,
-  Vector2,
-  Vector3,
-} from 'three'
+import { BufferGeometry, Mesh, Vector3, type MeshStandardMaterial, type Object3D, type Texture } from 'three'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-
-/** Texture repeats per world unit, so every part shows detail at the same scale. */
-export const UV_DENSITY = 1.1
 
 export type InsideFn = (p: Vector3) => boolean
 
@@ -24,293 +10,176 @@ export interface Solid {
   inside: InsideFn
 }
 
-function scaleUv(geometry: BufferGeometry, u: number, v: number): BufferGeometry {
-  const uv = geometry.attributes.uv
-  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * u * UV_DENSITY, uv.getY(i) * v * UV_DENSITY)
-  return geometry
+/**
+ * Low-poly CC0 models from Kenney's Food and Holiday kits (public/models/CREDITS.md).
+ * Each kit colors its models from one small palette image.
+ */
+const MODELS: Record<string, string[]> = {
+  food: [
+    'advocado-half', 'apple-half', 'bacon', 'banana', 'barrel', 'beet', 'bottle-ketchup', 'bottle-oil',
+    'bowl-broth', 'bowl-cereal', 'bowl-soup', 'bread', 'broccoli', 'burger', 'cake-birthday', 'cake-slicer',
+    'can-open', 'candy-bar-wrapper', 'carrot', 'carton', 'cauliflower', 'celery-stick', 'cheese', 'cheese-cut',
+    'cherries', 'chinese', 'chocolate-wrapper', 'chopstic-decorative', 'cocktail', 'coconut-half', 'cookie',
+    'cooking-knife', 'cooking-knife-chopping', 'cooking-spatula', 'cooking-spoon', 'corn', 'corn-dog',
+    'croissant', 'cup-coffee', 'cup-tea', 'cupcake', 'cutting-board-japanese', 'dim-sum', 'donut-sprinkles',
+    'egg-cooked', 'eggplant', 'fish', 'fish-bones', 'frappe', 'fries', 'frikandel-speciaal', 'frying-pan',
+    'ginger-bread', 'grapes', 'honey', 'hot-dog', 'ice-cream', 'knife-block', 'leek', 'lemon-half', 'loaf',
+    'loaf-baguette', 'lollypop', 'meat-cooked', 'meat-tenderizer', 'mug', 'mushroom-half', 'onion-half',
+    'orange', 'pan-stew', 'pancakes', 'paprika', 'paprika-slice', 'peanut-butter', 'pear', 'pear-half', 'pie',
+    'pineapple', 'pizza', 'plate-dinner', 'popsicle', 'popsicle-chocolate', 'pot-stew', 'pot-stew-lid',
+    'pumpkin', 'pumpkin-basic', 'radish', 'rice-ball', 'rollingPin', 'salad', 'sandwich', 'shaker-salt',
+    'skewer', 'skewer-vegetables', 'soda-can', 'soda-glass', 'strawberry', 'styrofoam-dinner', 'sub', 'sundae',
+    'sushi-egg', 'sushi-salmon', 'taco', 'tomato', 'turkey', 'utensil-fork', 'utensil-knife', 'utensil-spoon',
+    'whole-ham', 'wholer-ham', 'wine-red', 'wine-white',
+  ],
+  holiday: [
+    'bench-short', 'candy-cane-green', 'candy-cane-red', 'gingerbread-man', 'gingerbread-woman', 'lantern',
+    'nutcracker', 'present-a-cube', 'reindeer', 'sled', 'sled-long', 'snowman', 'train-locomotive',
+    'tree-decorated-snow', 'wreath-decorated',
+  ],
 }
 
-/** Planar UVs along each face's dominant axis; per vertex is fine when face normals are constant (boxes). */
-function boxProjectUv(geometry: BufferGeometry): BufferGeometry {
-  const pos = geometry.attributes.position
-  const nor = geometry.attributes.normal
-  const uv = geometry.attributes.uv
-  for (let i = 0; i < pos.count; i++) {
-    const ax = Math.abs(nor.getX(i))
-    const ay = Math.abs(nor.getY(i))
-    const az = Math.abs(nor.getZ(i))
-    const [a, b] =
-      ax >= ay && ax >= az ? [pos.getZ(i), pos.getY(i)] : ay >= az ? [pos.getX(i), pos.getZ(i)] : [pos.getX(i), pos.getY(i)]
-    uv.setXY(i, a * UV_DENSITY, b * UV_DENSITY)
-  }
-  return geometry
-}
+const KIT_OF = new Map(Object.entries(MODELS).flatMap(([kit, kinds]) => kinds.map((kind) => [kind, kit])))
+export const OBJECT_KINDS = [...KIT_OF.keys()]
 
-/** Applies a matrix to the geometry and reroutes the inside test through its inverse. */
-export function place(solid: Solid, matrix: Matrix4): Solid {
-  solid.geometry.applyMatrix4(matrix)
-  const invert = matrix.clone().invert()
-  const local = new Vector3()
-  const inner = solid.inside
-  return { geometry: solid.geometry, inside: (p) => inner(local.copy(p).applyMatrix4(invert)) }
-}
+/** Every model is scaled to this bounding-sphere radius before placement. */
+const RADIUS = 0.5
+/** Inside tests use a voxel grid this many cells across the model's bounding box. */
+const VOXELS = 32
 
-const at = (x: number, y: number, z = 0) => new Matrix4().makeTranslation(x, y, z)
-const rotZ = (a: number) => new Matrix4().makeRotationZ(a)
-const rotX = (a: number) => new Matrix4().makeRotationX(a)
-const rotY = (a: number) => new Matrix4().makeRotationY(a)
+const geometries = new Map<string, BufferGeometry>()
+const palettes = new Map<string, Texture>()
+const insides = new Map<string, InsideFn>()
+let loading: Promise<void> | null = null
 
-function union(...solids: Solid[]): Solid {
-  const merged = mergeGeometries(solids.map((s) => s.geometry))
-  solids.forEach((s) => s.geometry.dispose())
-  if (!merged) throw new Error('union failed')
-  const tests = solids.map((s) => s.inside)
-  return { geometry: merged, inside: (p) => tests.some((t) => t(p)) }
-}
-
-function box(w: number, h: number, d: number): Solid {
-  return {
-    geometry: boxProjectUv(new BoxGeometry(w, h, d)),
-    inside: (p) => Math.abs(p.x) <= w / 2 && Math.abs(p.y) <= h / 2 && Math.abs(p.z) <= d / 2,
-  }
-}
-
-function cylinder(rTop: number, rBottom: number, height: number, segments = 24): Solid {
-  return {
-    geometry: scaleUv(new CylinderGeometry(rTop, rBottom, height, segments), Math.PI * (rTop + rBottom), height),
-    inside: (p) => {
-      if (Math.abs(p.y) > height / 2) return false
-      const r = rBottom + ((rTop - rBottom) * (p.y + height / 2)) / height
-      return p.x * p.x + p.z * p.z <= r * r
-    },
-  }
-}
-
-/** Ellipsoid: sphere of radius r stretched by sx/sy/sz. */
-function blob(r: number, sx = 1, sy = 1, sz = 1): Solid {
-  const geometry = new SphereGeometry(r, 20, 14)
-  scaleUv(geometry, Math.PI * 2 * r * ((sx + sz) / 2), Math.PI * r * sy)
-  geometry.scale(sx, sy, sz)
-  return {
-    geometry,
-    inside: (p) => (p.x / (r * sx)) ** 2 + (p.y / (r * sy)) ** 2 + (p.z / (r * sz)) ** 2 <= 1,
-  }
-}
-
-/** Capsule along Y, optionally flattened in Z (for cookie limbs). */
-function pill(r: number, length: number, flatten = 1): Solid {
-  const geometry = scaleUv(new CapsuleGeometry(r, length, 4, 14), Math.PI * 2 * r, length + 2 * r)
-  if (flatten !== 1) geometry.scale(1, 1, flatten)
-  return {
-    geometry,
-    inside: (p) => {
-      const z = p.z / flatten
-      const y = Math.min(Math.max(p.y, -length / 2), length / 2)
-      return p.x * p.x + (p.y - y) * (p.y - y) + z * z <= r * r
-    },
-  }
-}
-
-/** Torus arc in the XY plane with sphere-capped ends. */
-function bentTube(radius: number, tube: number, arc: number): Solid {
-  const torus = scaleUv(new TorusGeometry(radius, tube, 12, 32, arc), arc * radius, Math.PI * 2 * tube)
-  const ends = [0, arc].map((a) => new Vector3(Math.cos(a) * radius, Math.sin(a) * radius, 0))
-  const tube2 = tube * tube
-  const inside: InsideFn = (p) => {
-    let angle = Math.atan2(p.y, p.x)
-    if (angle < 0) angle += Math.PI * 2
-    if (angle <= arc) {
-      const ring = Math.sqrt(p.x * p.x + p.y * p.y) - radius
-      if (ring * ring + p.z * p.z <= tube2) return true
-    }
-    return ends.some((e) => p.distanceToSquared(e) <= tube2)
-  }
-  if (arc > Math.PI * 1.97) return { geometry: torus, inside }
-  const caps = ends.map((e) => {
-    const cap = scaleUv(new SphereGeometry(tube, 10, 8), Math.PI * 2 * tube, Math.PI * tube)
-    cap.translate(e.x, e.y, e.z)
-    return cap
+/** One indexed position/normal/uv geometry per model, centered and scaled to RADIUS. */
+function flatten(root: Object3D): { geometry: BufferGeometry; palette: Texture | null } {
+  const parts: BufferGeometry[] = []
+  let palette: Texture | null = null
+  root.traverse((o) => {
+    if (!(o instanceof Mesh)) return
+    palette ??= (o.material as MeshStandardMaterial).map
+    let g = new BufferGeometry()
+    for (const name of ['position', 'normal', 'uv']) g.setAttribute(name, o.geometry.attributes[name].clone())
+    if (o.geometry.index) g.setIndex(o.geometry.index.clone())
+    else g = mergeVertices(g)
+    g.applyMatrix4(o.matrixWorld)
+    parts.push(g)
   })
-  const merged = mergeGeometries([torus, ...caps])
-  ;[torus, ...caps].forEach((g) => g.dispose())
-  return { geometry: merged ?? torus, inside }
+  const geometry = parts.length === 1 ? parts[0] : mergeGeometries(parts)
+  if (parts.length > 1) parts.forEach((g) => g.dispose())
+  if (!geometry) throw new Error('model merge failed')
+  geometry.center()
+  geometry.computeBoundingSphere()
+  const s = RADIUS / (geometry.boundingSphere?.radius ?? 1)
+  geometry.scale(s, s, s)
+  return { geometry, palette }
 }
 
-/** Full torus around the Z axis. */
-function ring(radius: number, tube: number): Solid {
-  return bentTube(radius, tube, Math.PI * 2)
-}
-
-/** Beveled extrusion of a 2D outline, centered on its Z depth. Inside test ignores the bevel. */
-function slab(points: Vector2[], depth: number, bevel: number): Solid {
-  const shape = new Shape2D(points)
-  const extruded = new ExtrudeGeometry(shape, {
-    depth,
-    bevelEnabled: bevel > 0,
-    bevelThickness: bevel,
-    bevelSize: bevel * 0.8,
-    bevelSegments: 2,
-  })
-  scaleUv(extruded, 1, 1)
-  const indexed = mergeVertices(extruded)
-  extruded.dispose()
-  indexed.translate(0, 0, -depth / 2)
-  const zMax = depth / 2 + bevel
-  return {
-    geometry: indexed,
-    inside: (p) => {
-      if (Math.abs(p.z) > zMax) return false
-      let hit = false
-      for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-        const a = points[i]
-        const b = points[j]
-        if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) hit = !hit
-      }
-      return hit
-    },
-  }
-}
-
-const v2 = (x: number, y: number) => new Vector2(x, y)
-
-function arcPoints(cx: number, cy: number, r: number, from: number, to: number, n: number): Vector2[] {
-  const pts: Vector2[] = []
-  for (let i = 0; i <= n; i++) {
-    const a = from + ((to - from) * i) / n
-    pts.push(v2(cx + Math.cos(a) * r, cy + Math.sin(a) * r))
-  }
-  return pts
-}
-
-function starPoints(spikes: number, outer: number, inner: number): Vector2[] {
-  const pts: Vector2[] = []
-  for (let i = 0; i < spikes * 2; i++) {
-    const a = (i / (spikes * 2)) * Math.PI * 2 + Math.PI / 2
-    const r = i % 2 ? inner : outer
-    pts.push(v2(Math.cos(a) * r, Math.sin(a) * r))
-  }
-  return pts
-}
-
-/** Pie wedge with the apex at the origin, opening around +X. */
-function wedgePoints(radius: number, angle: number): Vector2[] {
-  return [v2(0, 0), ...arcPoints(0, 0, radius, -angle / 2, angle / 2, 10)]
-}
-
-const BUILDERS: Record<string, () => Solid> = {
-  coin: () =>
-    union(cylinder(0.44, 0.44, 0.1, 40), place(ring(0.44, 0.055), rotX(Math.PI / 2))),
-
-  star: () => slab(starPoints(5, 0.52, 0.23), 0.1, 0.055),
-
-  gingerbread: () => {
-    const t = 0.42 // flatten factor for the cookie
-    return union(
-      place(blob(0.17, 1, 1, t), at(0, 0.34)),
-      place(blob(0.26, 1, 1.15, t * 0.7), at(0, -0.04)),
-      place(pill(0.09, 0.26, t), rotZ(1.15).premultiply(at(-0.26, 0.14))),
-      place(pill(0.09, 0.26, t), rotZ(-1.15).premultiply(at(0.26, 0.14))),
-      place(pill(0.1, 0.3, t), rotZ(0.35).premultiply(at(-0.14, -0.4))),
-      place(pill(0.1, 0.3, t), rotZ(-0.35).premultiply(at(0.14, -0.4))),
+/** Fetches every model once; levels can only be built after this resolves. */
+export function loadObjects(): Promise<void> {
+  loading ??= (async () => {
+    const loader = new GLTFLoader()
+    await Promise.all(
+      OBJECT_KINDS.map(async (kind) => {
+        const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/${KIT_OF.get(kind)}/${kind}.glb`)
+        gltf.scene.updateMatrixWorld(true)
+        const { geometry, palette } = flatten(gltf.scene)
+        geometries.set(kind, geometry)
+        const kit = KIT_OF.get(kind) ?? ''
+        if (palette && !palettes.has(kit)) palettes.set(kit, palette)
+      }),
     )
-  },
-
-  teddy: () =>
-    union(
-      place(blob(0.21), at(0, 0.35)),
-      place(blob(0.09), at(-0.16, 0.52)),
-      place(blob(0.09), at(0.16, 0.52)),
-      place(blob(0.09), at(0, 0.3, 0.17)),
-      place(blob(0.29, 1, 1.15, 0.9), at(0, -0.08)),
-      place(pill(0.1, 0.24), rotZ(1.0).premultiply(at(-0.31, 0.05))),
-      place(pill(0.1, 0.24), rotZ(-1.0).premultiply(at(0.31, 0.05))),
-      place(pill(0.11, 0.26), rotZ(0.3).premultiply(at(-0.17, -0.42))),
-      place(pill(0.11, 0.26), rotZ(-0.3).premultiply(at(0.17, -0.42))),
-    ),
-
-  piggy: () =>
-    union(
-      blob(0.3, 1.25, 0.9, 1),
-      place(cylinder(0.11, 0.11, 0.14, 18), rotZ(Math.PI / 2).premultiply(at(0.42, 0.02))),
-      place(cylinder(0, 0.09, 0.17, 12), rotZ(-0.5).premultiply(at(0.2, 0.3, 0.13))),
-      place(cylinder(0, 0.09, 0.17, 12), rotZ(-0.5).premultiply(at(0.2, 0.3, -0.13))),
-      place(cylinder(0.07, 0.07, 0.2, 12), at(0.2, -0.28, 0.15)),
-      place(cylinder(0.07, 0.07, 0.2, 12), at(0.2, -0.28, -0.15)),
-      place(cylinder(0.07, 0.07, 0.2, 12), at(-0.2, -0.28, 0.15)),
-      place(cylinder(0.07, 0.07, 0.2, 12), at(-0.2, -0.28, -0.15)),
-      place(bentTube(0.07, 0.028, 4.4), at(-0.41, 0.08)),
-    ),
-
-  spoon: () =>
-    union(
-      place(blob(0.2, 1, 1.35, 0.32), at(0, 0.32)),
-      place(box(0.09, 0.62, 0.05), at(0, -0.18)),
-    ),
-
-  cake: () => slab(wedgePoints(0.62, 1.15), 0.3, 0.04),
-
-  sausage: () => bentTube(0.35, 0.13, 2.4),
-
-  pizza: () => {
-    const angle = 1.0
-    return union(slab(wedgePoints(0.65, angle), 0.07, 0), place(bentTube(0.62, 0.07, angle), rotZ(-angle / 2)))
-  },
-
-  mug: () =>
-    union(cylinder(0.3, 0.3, 0.6, 28), place(ring(0.17, 0.05), at(0.33, 0))),
-
-  bone: () =>
-    union(
-      pill(0.1, 0.5),
-      place(blob(0.14), at(-0.11, 0.36)),
-      place(blob(0.14), at(0.11, 0.36)),
-      place(blob(0.14), at(-0.11, -0.36)),
-      place(blob(0.14), at(0.11, -0.36)),
-    ),
-
-  heart: () => {
-    const pts = [
-      ...arcPoints(0.19, 0.2, 0.24, -0.6, 2.5, 10),
-      ...arcPoints(-0.19, 0.2, 0.24, 0.64, 3.74, 10),
-      v2(0, -0.5),
-    ]
-    pts.reverse() // wind the outline the way ExtrudeGeometry expects
-    return slab(pts, 0.16, 0.05)
-  },
-
-  moon: () => {
-    const outer = arcPoints(0, 0, 0.48, 0.9, 2 * Math.PI - 0.9, 22)
-    const inner = arcPoints(0.2, 0, 0.4, 2 * Math.PI - 1.25, 1.25, 18)
-    inner.reverse()
-    return slab([...outer, ...inner], 0.13, 0.04)
-  },
-
-  rocket: () =>
-    union(
-      cylinder(0.16, 0.16, 0.55, 20),
-      place(cylinder(0, 0.16, 0.28, 20), at(0, 0.41)),
-      ...[0, 1, 2].map((i) =>
-        place(box(0.04, 0.26, 0.16), rotY((i * Math.PI * 2) / 3).multiply(at(0.19, -0.24, 0))),
-      ),
-    ),
-
-  pawn: () =>
-    union(
-      place(cylinder(0.23, 0.25, 0.1, 24), at(0, -0.4)),
-      place(cylinder(0.08, 0.21, 0.5, 20), at(0, -0.1)),
-      place(blob(0.15), at(0, 0.28)),
-    ),
-
-  fish: () =>
-    union(
-      blob(0.3, 1.3, 0.75, 0.5),
-      place(slab([v2(0, 0), v2(-0.28, 0.2), v2(-0.28, -0.2)], 0.05, 0), at(-0.34, 0)),
-      place(slab([v2(0, 0), v2(-0.18, 0.16), v2(0.1, 0.16)], 0.04, 0), at(0.02, 0.2)),
-    ),
+  })()
+  return loading
 }
 
-export const OBJECT_KINDS = Object.keys(BUILDERS)
+/** The kit's palette image that colors this kind. */
+export function paletteFor(kind: string): Texture | null {
+  return palettes.get(KIT_OF.get(kind) ?? '') ?? null
+}
 
+/**
+ * Solid voxel grid from ray parity along all three axes, with a majority vote so
+ * open bits (flat leaves, stems) don't flood a whole row.
+ */
+function voxelize(geometry: BufferGeometry): InsideFn {
+  geometry.computeBoundingBox()
+  const box = geometry.boundingBox
+  if (!box) return () => false
+  const min = box.min.toArray()
+  const size = box.getSize(new Vector3()).toArray().map((s) => Math.max(s, 1e-6))
+  const pos = geometry.attributes.position
+  const index = geometry.index
+  const triCount = index ? index.count / 3 : pos.count / 3
+  const tris = new Float32Array(triCount * 9)
+  for (let t = 0; t < triCount; t++) {
+    for (let k = 0; k < 3; k++) {
+      const v = index ? index.getX(t * 3 + k) : t * 3 + k
+      tris[t * 9 + k * 3] = pos.getX(v)
+      tris[t * 9 + k * 3 + 1] = pos.getY(v)
+      tris[t * 9 + k * 3 + 2] = pos.getZ(v)
+    }
+  }
+
+  const N = VOXELS
+  const votes = new Uint8Array(N * N * N)
+  const cell = [0, 0, 0]
+  const hits: number[] = []
+  for (let axis = 0; axis < 3; axis++) {
+    const u = (axis + 1) % 3
+    const w = (axis + 2) % 3
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < N; j++) {
+        const pu = min[u] + ((i + 0.5) * size[u]) / N
+        const pw = min[w] + ((j + 0.5) * size[w]) / N
+        hits.length = 0
+        for (let t = 0; t < tris.length; t += 9) {
+          const au = tris[t + u], aw = tris[t + w]
+          const bu = tris[t + 3 + u], bw = tris[t + 3 + w]
+          const cu = tris[t + 6 + u], cw = tris[t + 6 + w]
+          const d = (bw - cw) * (au - cu) + (cu - bu) * (aw - cw)
+          if (Math.abs(d) < 1e-12) continue
+          const l0 = ((bw - cw) * (pu - cu) + (cu - bu) * (pw - cw)) / d
+          const l1 = ((cw - aw) * (pu - cu) + (au - cu) * (pw - cw)) / d
+          const l2 = 1 - l0 - l1
+          if (l0 < 0 || l1 < 0 || l2 < 0) continue
+          hits.push(l0 * tris[t + axis] + l1 * tris[t + 3 + axis] + l2 * tris[t + 6 + axis])
+        }
+        hits.sort((a, b) => a - b)
+        // a ray through a shared edge hits both triangles; count it once
+        const unique = hits.filter((h, k) => k === 0 || h - hits[k - 1] > 1e-5)
+        for (let k = 0; k + 1 < unique.length; k += 2) {
+          const from = Math.max(0, Math.ceil(((unique[k] - min[axis]) / size[axis]) * N - 0.5))
+          const to = Math.min(N - 1, Math.floor(((unique[k + 1] - min[axis]) / size[axis]) * N - 0.5))
+          cell[u] = i
+          cell[w] = j
+          for (let c = from; c <= to; c++) {
+            cell[axis] = c
+            votes[cell[0] + N * (cell[1] + N * cell[2])]++
+          }
+        }
+      }
+    }
+  }
+
+  return (p) => {
+    const x = Math.floor(((p.x - min[0]) / size[0]) * N)
+    const y = Math.floor(((p.y - min[1]) / size[1]) * N)
+    const z = Math.floor(((p.z - min[2]) / size[2]) * N)
+    if (x < 0 || y < 0 || z < 0 || x >= N || y >= N || z >= N) return false
+    return votes[x + N * (y + N * z)] >= 2
+  }
+}
+
+/** A fresh copy of a loaded model; the caller owns (and disposes) the geometry. */
 export function buildObject(kind: string): Solid {
-  return BUILDERS[kind]()
+  const source = geometries.get(kind)
+  if (!source) throw new Error(`model not loaded: ${kind}`)
+  let inside = insides.get(kind)
+  if (!inside) {
+    inside = voxelize(source)
+    insides.set(kind, inside)
+  }
+  return { geometry: source.clone(), inside }
 }

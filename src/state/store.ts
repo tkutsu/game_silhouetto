@@ -78,6 +78,13 @@ function pointsFor(difficulty: number, timeMs: number): number {
 const shared = seedFromUrl()
 const stats = loadStats()
 
+/**
+ * Visual spring toward `roll`, shared so the wall grid, target outline and dial
+ * ring all turn as one blueprint. The wall updates it each frame; a new level
+ * resets it.
+ */
+export const rollSpring = { angle: 0, vel: 0 }
+
 export const useGame = create<GameState>((set, get) => ({
   seed: shared?.seed ?? seedFor(1),
   level: null,

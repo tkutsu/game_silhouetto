@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Silhouetto — model showcase</title>
+  </head>
+  <body class="min-h-full bg-[#081120] text-slate-200 antialiased">
+    <canvas id="gl" class="pointer-events-none fixed inset-0 z-10 h-full w-full"></canvas>
+
+    <header class="sticky top-0 z-20 border-b border-white/10 bg-[#081120]/90 backdrop-blur">
+      <div class="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-5 py-3">
+        <h1 class="mr-auto text-lg font-semibold">Silhouetto models</h1>
+        <nav id="filters" class="flex flex-wrap gap-1 text-sm"></nav>
+        <label class="flex cursor-pointer items-center gap-2 text-sm">
+          <input id="shadow" type="checkbox" class="accent-amber-400" /> Shadow view
+        </label>
+        <button id="copy" class="rounded-lg bg-amber-400 px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-amber-300">
+          Copy picks (<span id="count">0</span>)
+        </button>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-7xl px-5 pb-24">
+      <p class="mt-5 text-sm text-slate-400">
+        Drag a model to turn it. Every model in Kenney's Food and Holiday kits; the ones in the game come first and start ticked.
+        Tick <b class="text-slate-200">Use</b> to add or remove, then press <b class="text-slate-200">Copy picks</b> and paste the list back. Picks are saved in this browser.
+      </p>
+      <section id="models" class="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5"></section>
+    </main>
+
+    <div id="toast" class="fixed bottom-6 left-1/2 z-30 -translate-x-1/2 rounded-lg bg-slate-100 px-4 py-2 text-sm text-slate-900 opacity-0 transition-opacity"></div>
+
+    <script type="module" src="/showcase/main.ts"></script>
+  </body>
+</html>

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Plane, Quaternion, Raycaster, Vector2, Vector3, type Mesh } from 'three'
 import { FRAME, SCORE_RES, SPRING_DAMP, SPRING_K, STEP, WALL_Z, WIN_IOU } from '../lib/constants'
 import { AXES, type Level, type Move } from '../lib/level'
-import { createPartMaterials } from '../lib/materials'
+import { partMaterials } from '../lib/materials'
 import { iou, type Silhouetter } from '../lib/silhouette'
 import * as sound from '../lib/sound'
 import { searchMoves } from '../lib/solver'
@@ -32,6 +32,13 @@ const wobbleQ2 = new Quaternion()
 const stepQ = new Quaternion()
 const errQ = new Quaternion()
 const springAxis = new Vector3()
+const effScratch = new Quaternion()
+const rollQ = new Quaternion()
+const solveAxis = new Vector3()
+
+/** The piece as the blueprint sees it: rolling the blueprint counter-rotates the shadow relative to the outline. */
+const effective = (q: Quaternion, roll: number) =>
+  effScratch.copy(q).premultiply(rollQ.setFromAxisAngle(Z, -roll))
 
 const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
 
@@ -46,7 +53,7 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
   const gl = useThree((state) => state.gl)
   const camera = useThree((state) => state.camera)
   const mesh = useRef<Mesh>(null)
-  const materials = useMemo(() => createPartMaterials(level.seed, level.kinds, gl), [level, gl])
+  const materials = useMemo(() => partMaterials(level.kinds, gl), [level, gl])
   const s = useRef({
     /** Logical orientation, always exactly on the step grid. */
     q: level.start.clone(),
@@ -63,19 +70,17 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
     nextMove: 0,
   }).current
 
-  useEffect(
-    () => () =>
-      materials.forEach((m) => m.dispose()),
-    [materials],
-  )
-
   const commit = (axis: Vector3, dir: number) => {
-    s.q.premultiply(stepQ.setFromAxisAngle(axis, dir * STEP)).normalize()
+    // Z steps turn the blueprint (grid, outline and dial), not the piece
+    if (axis === Z) {
+      useGame.getState().rollBy(dir * STEP)
+    } else {
+      s.q.premultiply(stepQ.setFromAxisAngle(axis, dir * STEP)).normalize()
+      s.squash = 1
+    }
     s.dirty = true
-    s.squash = 1
     if (!useGame.getState().muted) sound.clunk()
     navigator.vibrate?.(10)
-    if (axis === Z) useGame.getState().rollBy(dir * STEP)
   }
 
   /** Freeform turn for the piece itself: no grid, no clunk, tracks the finger directly. */
@@ -231,8 +236,9 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
     const now = performance.now()
 
     if (game.solved) {
-      s.q.copy(level.solution)
-      if (s.snap) s.shown.slerp(level.solution, 1 - Math.exp(-dt * 6))
+      // the physical pose whose shadow lands on the (rolled) outline
+      s.q.copy(level.solution).premultiply(rollQ.setFromAxisAngle(Z, game.roll))
+      if (s.snap) s.shown.slerp(s.q, 1 - Math.exp(-dt * 6))
       s.spin.set(0, 0, 0)
       if (s.wobble > 0) s.wobble = 0
     } else {
@@ -243,28 +249,34 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
         // none does (or the path lands shy of the win) glide the rest of the way
         if (s.plan === null) {
           const wins = (q: Quaternion) => iou(sil.render(level.geometry, q, SCORE_RES), level.target) >= WIN_IOU
-          s.plan = searchMoves(s.q, level.solution, wins) ?? []
+          s.plan = searchMoves(effective(s.q, game.roll), level.solution, wins) ?? []
         }
         if (s.plan.length > 0) {
           if (now >= s.nextMove) {
             const next = s.plan.shift()
-            if (next) commit(next.axis, next.dir)
+            // the plan lives in blueprint space: a Z step there is a counter-roll of the
+            // blueprint, and pitch/yaw steps happen about the blueprint's rolled axes
+            if (next && next.axis === Z) commit(Z, -next.dir)
+            else if (next) commit(solveAxis.copy(next.axis).applyAxisAngle(Z, game.roll), next.dir)
             s.nextMove = now + AUTO_MS
           }
         } else {
-          s.q.rotateTowards(level.solution, SOLVE_RATE * dt)
+          s.q.rotateTowards(
+            effScratch.copy(level.solution).premultiply(rollQ.setFromAxisAngle(Z, game.roll)),
+            SOLVE_RATE * dt,
+          )
           s.dirty = true
         }
       }
 
       // the win fires the instant the threshold is crossed, mid-drag included
       if (s.dirty && now - s.lastScore > SCORE_MS) {
-        const match = iou(sil.render(level.geometry, s.q, SCORE_RES), level.target)
+        const match = iou(sil.render(level.geometry, effective(s.q, game.roll), SCORE_RES), level.target)
         s.dirty = false
         s.lastScore = now
         game.setMatch(match)
         if (match >= WIN_IOU && game.startedAt !== null) {
-          s.snap = s.q.angleTo(level.solution) < SNAP_ANGLE
+          s.snap = effective(s.q, game.roll).angleTo(level.solution) < SNAP_ANGLE
           game.solve(match)
         }
       }

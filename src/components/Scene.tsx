@@ -1,6 +1,6 @@
 import { Canvas, useThree } from '@react-three/fiber'
 import { useEffect } from 'react'
-import type { PerspectiveCamera } from 'three'
+import { NeutralToneMapping, type PerspectiveCamera } from 'three'
 import { CAM_POS, CAM_TARGET, FRAME, LIGHT_Z } from '../lib/constants'
 import { LevelView } from './LevelView'
 import { Wall } from './Wall'
@@ -27,7 +27,15 @@ function CameraRig() {
 
 export function Scene() {
   return (
-    <Canvas shadows="variance" className="touch-none" camera={{ position: [...CAM_POS], fov: FOV }}>
+    <Canvas
+      shadows="percentage"
+      className="touch-none"
+      camera={{ position: [...CAM_POS], fov: FOV }}
+      // ACES desaturates the palette; Neutral keeps the toy colors vivid
+      onCreated={({ gl }) => {
+        gl.toneMapping = NeutralToneMapping
+      }}
+    >
       <CameraRig />
       <color attach="background" args={['#081120']} />
       <hemisphereLight args={['#dce9ff', '#3b2c20', 1.1]} />
@@ -37,8 +45,6 @@ export function Scene() {
         intensity={0.9}
         castShadow
         shadow-mapSize={[2048, 2048]}
-        shadow-radius={12}
-        shadow-blurSamples={20}
         shadow-bias={-0.0004}
       >
         <orthographicCamera attach="shadow-camera" args={[-S, S, S, -S, 0.1, LIGHT_Z * 2]} />

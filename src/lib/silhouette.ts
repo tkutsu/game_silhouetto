@@ -79,7 +79,7 @@ export function dialTexture(res = 512): CanvasTexture {
 
   const c = res / 2
   const r = res * 0.47
-  ctx.strokeStyle = 'rgba(1,6,17,0.55)'
+  ctx.strokeStyle = 'rgba(255,255,255,0.65)'
   ctx.lineWidth = Math.max(1, res / 256)
   ctx.setLineDash([res / 64, res / 96])
   ctx.beginPath()
@@ -93,7 +93,7 @@ export function dialTexture(res = 512): CanvasTexture {
     ctx.lineTo(c + Math.cos(a) * (r + res / 48), c + Math.sin(a) * (r + res / 48))
     ctx.stroke()
   }
-  ctx.fillStyle = 'rgba(1,6,17,0.8)'
+  ctx.fillStyle = 'rgba(255,255,255,0.9)'
   for (const base of [Math.PI / 4, Math.PI + Math.PI / 4]) {
     const ax = c + Math.cos(base) * r
     const ay = c + Math.sin(base) * r

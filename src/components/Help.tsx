@@ -39,7 +39,7 @@ export function Help() {
       <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900/95 p-6 text-center shadow-2xl">
         <p className="text-xs tracking-widest text-amber-400 uppercase">How to play</p>
         <p className="mt-3 text-sm leading-relaxed text-slate-300">
-          Turn the piece until its shadow fits the outline on the blueprint. Spinning the shadow clicks in 15° steps.
+          Turn the piece until its shadow fits the outline on the blueprint. Spinning the blueprint clicks in 15° steps.
         </p>
         <div className="mt-5 grid grid-cols-2 gap-3">
           <div>
@@ -48,7 +48,7 @@ export function Help() {
           </div>
           <div>
             <SpinDemo />
-            <p className="mt-2 text-xs text-slate-400">Drag the shadow to spin it</p>
+            <p className="mt-2 text-xs text-slate-400">Drag the blueprint to spin it</p>
           </div>
         </div>
         <button
