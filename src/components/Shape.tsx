@@ -1,27 +1,37 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import { Plane, Quaternion, Raycaster, Vector2, Vector3, type Mesh } from 'three'
-import { FRAME, SCORE_RES, WALL_Z, WIN_IOU } from '../lib/constants'
-import type { Level } from '../lib/level'
+import { FRAME, SCORE_RES, SPRING_DAMP, SPRING_K, STEP, WALL_Z, WIN_IOU } from '../lib/constants'
+import { AXES, type Level, type Move } from '../lib/level'
 import { createPartMaterials } from '../lib/materials'
 import { iou, type Silhouetter } from '../lib/silhouette'
+import * as sound from '../lib/sound'
+import { searchMoves } from '../lib/solver'
 import { useGame } from '../state/store'
 
-const DRAG_SPEED = 0.008
-const WHEEL_SPEED = 0.002
-const KEY_STEP = 0.05
-const MAX_SPIN = 12
+const PX_PER_RADIAN = 125
+const WHEEL_PER_RADIAN = 500
+/** A step commits this far into the drag, so the snap kicks in early. */
+const TRIGGER = 0.55
 const SNAP_ANGLE = 0.5
-const SETTLE_MS = 150
 const SCORE_MS = 100
-/** Drags starting on the wall this close to the shadow's centre act as a dial. */
-const DIAL_RADIUS = FRAME * 2.2
+const SQUASH = 0.055
+/** Gap between moves when the Solve button plays them back. */
+const AUTO_MS = 190
+/** How fast the Solve button glides when no step path fits: the playback speed. */
+const SOLVE_RATE = STEP / (AUTO_MS / 1000)
+/** Wall drags inside this radius act as a dial; past the dashed ring they're inert. */
+const DIAL_OUTER = FRAME * 1.05
+/** The dashed ring's radius: the dial tracks the finger 1:1 there and slows toward
+ * the centre, where a raw angle would spin wildly on tiny movements. */
+const DIAL_RING = FRAME * 0.94
 
-const X = new Vector3(1, 0, 0)
-const Y = new Vector3(0, 1, 0)
-const Z = new Vector3(0, 0, 1)
+const [X, Y, Z] = AXES
 const wobbleQ = new Quaternion()
 const wobbleQ2 = new Quaternion()
+const stepQ = new Quaternion()
+const errQ = new Quaternion()
+const springAxis = new Vector3()
 
 const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
 
@@ -36,17 +46,21 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
   const gl = useThree((state) => state.gl)
   const camera = useThree((state) => state.camera)
   const mesh = useRef<Mesh>(null)
-  const materials = useMemo(() => createPartMaterials(level.seed, level.geometry.groups.length, gl), [level, gl])
+  const materials = useMemo(() => createPartMaterials(level.seed, level.kinds, gl), [level, gl])
   const s = useRef({
+    /** Logical orientation, always exactly on the step grid. */
     q: level.start.clone(),
-    vel: new Vector3(),
-    dragging: false,
+    /** What's rendered: springs after q, overshooting a touch on each landing. */
+    shown: level.start.clone(),
+    spin: new Vector3(),
+    squash: 0,
     snap: false,
     dirty: true,
-    unchecked: false,
     wobble: 1,
-    lastInput: 0,
     lastScore: 0,
+    /** Remaining moves while the Solve button plays; null until it's pressed. */
+    plan: null as Move[] | null,
+    nextMove: 0,
   }).current
 
   useEffect(
@@ -55,11 +69,21 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
     [materials],
   )
 
+  const commit = (axis: Vector3, dir: number) => {
+    s.q.premultiply(stepQ.setFromAxisAngle(axis, dir * STEP)).normalize()
+    s.dirty = true
+    s.squash = 1
+    if (!useGame.getState().muted) sound.clunk()
+    navigator.vibrate?.(10)
+    if (axis === Z) useGame.getState().rollBy(dir * STEP)
+  }
+
+  /** Freeform turn for the piece itself: no grid, no clunk, tracks the finger directly. */
   const rotate = (axis: Vector3, angle: number) => {
-    if (!angle) return
-    s.q.premultiply(new Quaternion().setFromAxisAngle(axis, angle)).normalize()
-    s.dirty = s.unchecked = true
-    s.lastInput = performance.now()
+    s.q.premultiply(stepQ.setFromAxisAngle(axis, angle)).normalize()
+    s.shown.copy(s.q)
+    s.spin.set(0, 0, 0)
+    s.dirty = true
   }
 
   useEffect(() => {
@@ -69,8 +93,15 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
     const ndc = new Vector2()
     const hitPoint = new Vector3()
     const wallPlane = new Plane(Z, -WALL_Z)
-    const axis = new Vector3()
-    let lastMove = 0
+    // pending roll in radians; a step commits once TRIGGER of it is dragged
+    const acc = { roll: 0 }
+
+    const drainRoll = () => {
+      while (Math.abs(acc.roll) >= STEP * TRIGGER) {
+        commit(Z, Math.sign(acc.roll))
+        acc.roll -= Math.sign(acc.roll) * STEP
+      }
+    }
 
     const cast = (e: PointerEvent) => {
       const r = el.getBoundingClientRect()
@@ -81,71 +112,67 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
       cast(e)
       return mesh.current ? raycaster.intersectObject(mesh.current, false).length > 0 : false
     }
-    /** Angle around the shadow's centre on the wall, or null when off the dial. */
-    const dialAngle = (e: PointerEvent): number | null => {
+    /** Angle and radius around the shadow's centre on the wall, or null when off the dial. */
+    const dialHit = (e: PointerEvent): { angle: number; r: number } | null => {
       cast(e)
       if (!raycaster.ray.intersectPlane(wallPlane, hitPoint)) return null
-      return Math.hypot(hitPoint.x, hitPoint.y) <= DIAL_RADIUS ? Math.atan2(hitPoint.y, hitPoint.x) : null
+      const r = Math.hypot(hitPoint.x, hitPoint.y)
+      return r <= DIAL_OUTER ? { angle: Math.atan2(hitPoint.y, hitPoint.x), r } : null
     }
 
     const active = () => {
-      if (useGame.getState().solved) return false
+      if (useGame.getState().solved || useGame.getState().autoSolving) return false
       useGame.getState().begin()
       return true
     }
 
     const down = (e: PointerEvent) => {
       if (!active()) return
+      const shape = onShape(e)
+      const hit = shape ? null : dialHit(e)
+      // grab only the piece or the dial; a second finger may land anywhere (twist gesture)
+      if (pointers.size === 0 && !shape && hit === null) return
       el.setPointerCapture(e.pointerId)
-      const angle = onShape(e) ? null : dialAngle(e)
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, dial: angle !== null, angle: angle ?? 0 })
-      s.dragging = true
-      s.vel.set(0, 0, 0)
-      lastMove = performance.now()
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, dial: hit !== null, angle: hit?.angle ?? 0 })
+      if (pointers.size === 1) acc.roll = 0
       el.style.cursor = 'grabbing'
     }
 
     const move = (e: PointerEvent) => {
       if (pointers.size === 0) {
         const solved = useGame.getState().solved
-        el.style.cursor = !solved && (onShape(e) || dialAngle(e) !== null) ? 'grab' : 'default'
+        el.style.cursor = !solved && (onShape(e) || dialHit(e) !== null) ? 'grab' : 'default'
         return
       }
       const prev = pointers.get(e.pointerId)
-      if (!prev || useGame.getState().solved) return
-      const now = performance.now()
+      if (!prev || !active()) return
 
       if (pointers.size === 1) {
         if (prev.dial) {
-          const angle = dialAngle(e)
-          if (angle !== null) {
-            rotate(Z, wrapAngle(angle - prev.angle))
-            prev.angle = angle
-            useGame.getState().markSpin()
+          const hit = dialHit(e)
+          if (hit === null) {
+            // off the dial: re-anchor on re-entry instead of applying the jump
+            prev.angle = Number.NaN
+          } else {
+            if (!Number.isNaN(prev.angle)) acc.roll += wrapAngle(hit.angle - prev.angle) * Math.min(1, hit.r / DIAL_RING)
+            prev.angle = hit.angle
+            drainRoll()
           }
         } else {
-          const dx = e.clientX - prev.x
-          const dy = e.clientY - prev.y
-          const len = Math.hypot(dx, dy)
-          if (len > 0) {
-            axis.set(dy, dx, 0).divideScalar(len)
-            rotate(axis, len * DRAG_SPEED)
-            useGame.getState().markTumble()
-            const dt = Math.max((now - lastMove) / 1000, 1 / 240)
-            s.vel.lerp(axis.multiplyScalar((len * DRAG_SPEED) / dt), 0.5).clampLength(0, MAX_SPIN)
-          }
+          // turntable: horizontal drag yaws, vertical drag pitches; roll lives on the shadow dial
+          rotate(Y, (e.clientX - prev.x) / PX_PER_RADIAN)
+          rotate(X, (e.clientY - prev.y) / PX_PER_RADIAN)
         }
       } else {
         const other = [...pointers].find(([id]) => id !== e.pointerId)?.[1]
         if (other) {
           const before = Math.atan2(prev.y - other.y, prev.x - other.x)
           const after = Math.atan2(e.clientY - other.y, e.clientX - other.x)
-          rotate(Z, -wrapAngle(after - before))
-          useGame.getState().markSpin()
+          acc.roll -= wrapAngle(after - before)
+          drainRoll()
         }
       }
 
-      lastMove = now
       prev.x = e.clientX
       prev.y = e.clientY
     }
@@ -153,35 +180,34 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
     const up = (e: PointerEvent) => {
       pointers.delete(e.pointerId)
       if (pointers.size > 0) return
-      s.dragging = false
       el.style.cursor = 'default'
-      if (performance.now() - lastMove > 60) s.vel.set(0, 0, 0)
     }
 
     const wheel = (e: WheelEvent) => {
       e.preventDefault()
       if (active()) {
-        rotate(Z, -e.deltaY * WHEEL_SPEED)
-        useGame.getState().markSpin()
+        acc.roll -= e.deltaY / WHEEL_PER_RADIAN
+        drainRoll()
       }
     }
 
     const keys: Record<string, [Vector3, number]> = {
-      ArrowLeft: [Y, -KEY_STEP],
-      ArrowRight: [Y, KEY_STEP],
-      ArrowUp: [X, -KEY_STEP],
-      ArrowDown: [X, KEY_STEP],
-      KeyQ: [Z, KEY_STEP],
-      KeyE: [Z, -KEY_STEP],
+      ArrowLeft: [Y, -1],
+      ArrowRight: [Y, 1],
+      ArrowUp: [X, -1],
+      ArrowDown: [X, 1],
+      KeyQ: [Z, 1],
+      KeyE: [Z, -1],
     }
     const key = (e: KeyboardEvent) => {
       const k = keys[e.code]
       if (!k) return
       e.preventDefault()
-      if (active()) {
-        rotate(...k)
-        useGame.getState()[k[0] === Z ? 'markSpin' : 'markTumble']()
-      }
+      if (!active()) return
+      const [axis, dir] = k
+      // only the shadow's roll is stepped; arrows nudge the piece freely (hold to keep turning)
+      if (axis === Z) commit(axis, dir)
+      else rotate(axis, (dir * STEP) / 3)
     }
 
     el.addEventListener('pointerdown', down)
@@ -205,37 +231,67 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
     const now = performance.now()
 
     if (game.solved) {
-      if (s.snap) s.q.slerp(level.solution, 1 - Math.exp(-dt * 6))
+      s.q.copy(level.solution)
+      if (s.snap) s.shown.slerp(level.solution, 1 - Math.exp(-dt * 6))
+      s.spin.set(0, 0, 0)
       if (s.wobble > 0) s.wobble = 0
     } else {
       if (game.startedAt !== null && s.wobble > 0) s.wobble = Math.max(0, s.wobble - dt * 2)
 
-      if (!s.dragging && s.vel.lengthSq() > 0) {
-        const w = s.vel.length()
-        rotate(s.vel.clone().divideScalar(w), w * dt)
-        s.vel.multiplyScalar(Math.exp(-dt * 5))
-        if (w < 0.05) s.vel.set(0, 0, 0)
+      if (game.autoSolving) {
+        // stepped playback when a short path exists; the piece is freeform now, so when
+        // none does (or the path lands shy of the win) glide the rest of the way
+        if (s.plan === null) {
+          const wins = (q: Quaternion) => iou(sil.render(level.geometry, q, SCORE_RES), level.target) >= WIN_IOU
+          s.plan = searchMoves(s.q, level.solution, wins) ?? []
+        }
+        if (s.plan.length > 0) {
+          if (now >= s.nextMove) {
+            const next = s.plan.shift()
+            if (next) commit(next.axis, next.dir)
+            s.nextMove = now + AUTO_MS
+          }
+        } else {
+          s.q.rotateTowards(level.solution, SOLVE_RATE * dt)
+          s.dirty = true
+        }
       }
 
-      const verdict = s.unchecked && !s.dragging && s.vel.lengthSq() === 0 && now - s.lastInput > SETTLE_MS
-      if (verdict || (s.dirty && now - s.lastScore > SCORE_MS)) {
+      // the win fires the instant the threshold is crossed, mid-drag included
+      if (s.dirty && now - s.lastScore > SCORE_MS) {
         const match = iou(sil.render(level.geometry, s.q, SCORE_RES), level.target)
         s.dirty = false
         s.lastScore = now
         game.setMatch(match)
-        if (verdict) {
-          s.unchecked = false
-          if (match >= WIN_IOU) {
-            s.snap = s.q.angleTo(level.solution) < SNAP_ANGLE
-            game.solve(match)
-          }
+        if (match >= WIN_IOU && game.startedAt !== null) {
+          s.snap = s.q.angleTo(level.solution) < SNAP_ANGLE
+          game.solve(match)
         }
+      }
+
+      // spring the shown orientation toward the grid orientation
+      errQ.copy(s.shown).invert().premultiply(s.q)
+      if (errQ.w < 0) errQ.set(-errQ.x, -errQ.y, -errQ.z, -errQ.w)
+      const err = 2 * Math.acos(Math.min(errQ.w, 1))
+      if (err > 1e-4) {
+        springAxis.set(errQ.x, errQ.y, errQ.z).normalize()
+        s.spin.addScaledVector(springAxis, err * SPRING_K * dt)
+      }
+      s.spin.multiplyScalar(Math.exp(-SPRING_DAMP * dt))
+      const w = s.spin.length()
+      if (w > 1e-4) {
+        s.shown.premultiply(stepQ.setFromAxisAngle(springAxis.copy(s.spin).divideScalar(w), w * dt)).normalize()
+      } else if (err < 1e-3) {
+        s.shown.copy(s.q)
       }
     }
 
+    s.squash = Math.max(0, s.squash - dt * 6)
+
     const m = mesh.current
     if (!m) return
-    m.quaternion.copy(s.q)
+    m.quaternion.copy(s.shown)
+    m.scale.setScalar(game.solved ? 1 : 1 - SQUASH * s.squash)
 
     if (s.wobble > 0.001) {
       const t = now / 1000

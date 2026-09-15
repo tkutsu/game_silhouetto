@@ -1,7 +1,7 @@
 import { Canvas, useThree } from '@react-three/fiber'
 import { useEffect } from 'react'
 import type { PerspectiveCamera } from 'three'
-import { FRAME, LIGHT_Z } from '../lib/constants'
+import { CAM_POS, CAM_TARGET, FRAME, LIGHT_Z } from '../lib/constants'
 import { LevelView } from './LevelView'
 import { Wall } from './Wall'
 
@@ -18,7 +18,7 @@ function CameraRig() {
     const camera = get().camera as PerspectiveCamera
     const halfTan = Math.tan((FOV * Math.PI) / 360) * Math.max(1, MIN_ASPECT / aspect)
     camera.fov = (Math.atan(halfTan) * 360) / Math.PI
-    camera.lookAt(-0.2, 0, -1.7)
+    camera.lookAt(...CAM_TARGET)
     camera.updateProjectionMatrix()
   }, [get, aspect])
 
@@ -27,7 +27,7 @@ function CameraRig() {
 
 export function Scene() {
   return (
-    <Canvas shadows className="touch-none" camera={{ position: [5.2, 1.6, 6.4], fov: FOV }}>
+    <Canvas shadows="variance" className="touch-none" camera={{ position: [...CAM_POS], fov: FOV }}>
       <CameraRig />
       <color attach="background" args={['#081120']} />
       <hemisphereLight args={['#dce9ff', '#3b2c20', 1.1]} />
@@ -37,7 +37,8 @@ export function Scene() {
         intensity={0.9}
         castShadow
         shadow-mapSize={[2048, 2048]}
-        shadow-radius={4}
+        shadow-radius={12}
+        shadow-blurSamples={20}
         shadow-bias={-0.0004}
       >
         <orthographicCamera attach="shadow-camera" args={[-S, S, S, -S, 0.1, LIGHT_Z * 2]} />

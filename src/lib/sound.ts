@@ -1,11 +1,11 @@
 let ctx: AudioContext | null = null
 
-function tone(freq: number, at: number, duration: number, gain: number) {
+function tone(freq: number, at: number, duration: number, gain: number, type: OscillatorType = 'sine') {
   if (!ctx) ctx = new AudioContext()
   const t = ctx.currentTime + at
   const osc = ctx.createOscillator()
   const amp = ctx.createGain()
-  osc.type = 'sine'
+  osc.type = type
   osc.frequency.value = freq
   amp.gain.setValueAtTime(0, t)
   amp.gain.linearRampToValueAtTime(gain, t + 0.01)
@@ -21,6 +21,12 @@ const PENTATONIC = [0, 2, 4, 7, 9]
 export function closer(step: number) {
   const semis = PENTATONIC[step % 5] + 12 * Math.floor(step / 5)
   tone(392 * 2 ** (semis / 12), 0, 0.18, 0.08)
+}
+
+/** Dull wooden knock for a rotation step clicking into its notch. */
+export function clunk() {
+  tone(140 + Math.random() * 30, 0, 0.055, 0.09, 'triangle')
+  tone(82, 0, 0.09, 0.07)
 }
 
 export function win() {

@@ -13,47 +13,45 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { rngFor } from './rng'
 
 /**
- * CC0 texture sets in public/textures/<id>/ from ambientCG and Poly Haven, picked for
- * strong normal maps over flat glossy surfaces. See public/textures/CREDITS.md.
- * `metal: 'full'` sets are uniformly metallic, so they skip the map download.
+ * Contextual CC0 texture sets per object kind (ambientCG + Poly Haven, see
+ * public/textures/CREDITS.md): a teddy gets plush fabrics, a coin gets metals.
+ * At least three options each, so repeated kinds across puzzles still vary.
  */
-const SETS: { id: string; metal?: 'map' | 'full' }[] = [
-  { id: 'AcousticFoam003' },
-  { id: 'Bamboo001A' },
-  { id: 'Bark004' },
-  { id: 'Bricks075A' },
-  { id: 'Candy001' },
-  { id: 'Carpet014' },
-  { id: 'Chainmail004', metal: 'full' },
-  { id: 'Cork001' },
-  { id: 'CorrugatedSteel009', metal: 'full' },
-  { id: 'denim_fabric' },
-  { id: 'DiamondPlate007D', metal: 'map' },
-  { id: 'Fabric083' },
-  { id: 'Foam002' },
-  { id: 'Foil002', metal: 'full' },
-  { id: 'Grass001' },
-  { id: 'Ground054' },
-  { id: 'knitted_fleece' },
-  { id: 'Lava001' },
-  { id: 'Leather034C' },
-  { id: 'Moss001' },
-  { id: 'Pizza003' },
-  { id: 'Rock030' },
-  { id: 'RoofingTiles006' },
-  { id: 'Rope001' },
-  { id: 'Shells001' },
-  { id: 'Snow009A' },
-  { id: 'Sponge001' },
-  { id: 'Wicker006' },
-  { id: 'WoodChips001' },
-]
+const OBJECT_TEXTURES: Record<string, string[]> = {
+  coin: ['Foil002', 'Metal032', 'DiamondPlate007D', 'Chainmail004'],
+  star: ['Foil002', 'Candy001', 'Snow009A', 'Lava001'],
+  gingerbread: ['Cork001', 'WoodChips001', 'Sponge001', 'Bark004'],
+  teddy: ['knitted_fleece', 'Carpet014', 'Fabric083', 'denim_fabric'],
+  piggy: ['Cork001', 'Candy001', 'Foil002', 'Snow009A'],
+  spoon: ['Metal032', 'Wood066', 'Foil002', 'Bamboo001A'],
+  cake: ['Sponge001', 'Candy001', 'Snow009A', 'Cork001'],
+  sausage: ['Leather034C', 'Cork001', 'Bark004', 'WoodChips001'],
+  pizza: ['Pizza003', 'Sponge001', 'Cork001', 'RoofingTiles006'],
+  mug: ['Snow009A', 'Candy001', 'Bricks075A', 'Foam002'],
+  bone: ['Snow009A', 'Foam002', 'Shells001', 'Rock030'],
+  heart: ['Candy001', 'Cork001', 'knitted_fleece', 'Lava001'],
+  moon: ['Snow009A', 'Foil002', 'Rock030', 'AcousticFoam003'],
+  rocket: ['CorrugatedSteel009', 'DiamondPlate007D', 'Foil002', 'Lava001'],
+  pawn: ['Wood066', 'Metal032', 'Snow009A', 'Rock030'],
+  fish: ['Shells001', 'denim_fabric', 'Foil002', 'Snow009A'],
+}
+
+/** Uniformly metallic sets skip the metalness-map download; 'map' sets ship one. */
+const METAL: Record<string, 'map' | 'full'> = {
+  Chainmail004: 'full',
+  CorrugatedSteel009: 'full',
+  DiamondPlate007D: 'map',
+  Foil002: 'full',
+  Metal032: 'full',
+}
+
+const ALL_SETS = [...new Set(Object.values(OBJECT_TEXTURES).flat())]
 
 const BUMP = new Vector2(1.4, 1.4)
 const loader = new TextureLoader()
 const cache = new Map<string, Texture>()
 
-/** Textures are shared across puzzles and never disposed; the whole set is about 2.5 MB. */
+/** Textures are shared across puzzles and never disposed; the whole set is about 1.5 MB. */
 function texture(id: string, map: string, color = false): Texture {
   const url = `${import.meta.env.BASE_URL}textures/${id}/${map}.webp`
   let tex = cache.get(url)
@@ -67,11 +65,11 @@ function texture(id: string, map: string, color = false): Texture {
 }
 
 export function preloadTextures() {
-  for (const { id, metal } of SETS) {
+  for (const id of ALL_SETS) {
     texture(id, 'color', true)
     texture(id, 'normal')
     texture(id, 'rough')
-    if (metal === 'map') texture(id, 'metal')
+    if (METAL[id] === 'map') texture(id, 'metal')
   }
 }
 
@@ -90,28 +88,23 @@ function reflections(gl: WebGLRenderer): Texture {
   return environment
 }
 
-/** 'Foam002' and 'Foam001' look alike; group ids by their letter prefix so a shape never repeats a family. */
-const family = (id: string) => /^[A-Z]/.test(id) ? (id.match(/^[A-Za-z]+/) as RegExpMatchArray)[0] : id
-
-/** One seeded material per merged-geometry group; no two parts share a texture family. */
-export function createPartMaterials(seed: string, count: number, gl: WebGLRenderer): MeshStandardMaterial[] {
+/** One material per object, seeded from its kind's contextual list, no repeats within a level. */
+export function createPartMaterials(seed: string, kinds: string[], gl: WebGLRenderer): MeshStandardMaterial[] {
   const rng = rngFor(`${seed}#materials`)
-  const order = SETS.map((_, i) => i)
-  for (let i = order.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1))
-    ;[order[i], order[j]] = [order[j], order[i]]
-  }
-  const picked: number[] = []
   const used = new Set<string>()
-  for (const idx of order) {
-    const fam = family(SETS[idx].id)
-    if (used.has(fam)) continue
-    used.add(fam)
-    picked.push(idx)
-    if (picked.length === count) break
-  }
-  return Array.from({ length: count }, (_, i) => {
-    const { id, metal } = SETS[picked[i % picked.length]]
+  return kinds.map((kind) => {
+    const options = OBJECT_TEXTURES[kind] ?? ALL_SETS
+    const offset = Math.floor(rng() * options.length)
+    let id = options[offset]
+    for (let i = 0; i < options.length; i++) {
+      const candidate = options[(offset + i) % options.length]
+      if (!used.has(candidate)) {
+        id = candidate
+        break
+      }
+    }
+    used.add(id)
+    const metal = METAL[id]
     return new MeshStandardMaterial({
       name: id,
       map: texture(id, 'color', true),

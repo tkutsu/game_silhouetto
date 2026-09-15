@@ -70,7 +70,49 @@ export function iou(a: Mask, b: Mask): number {
 
 export const coverage = (mask: Mask) => mask.reduce((n, v) => n + v, 0) / mask.length
 
-/** Blueprint-style target: white outline, hatched fill, dashed dial ring with rotation arrows. */
+/** Dashed dial ring with ticks and rotation arrows, on its own texture so it can spin with the roll. */
+export function dialTexture(res = 512): CanvasTexture {
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = res
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('2d context unavailable')
+
+  const c = res / 2
+  const r = res * 0.47
+  ctx.strokeStyle = 'rgba(1,6,17,0.55)'
+  ctx.lineWidth = Math.max(1, res / 256)
+  ctx.setLineDash([res / 64, res / 96])
+  ctx.beginPath()
+  ctx.arc(c, c, r, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.setLineDash([])
+  for (let k = 0; k < 4; k++) {
+    const a = (k * Math.PI) / 2
+    ctx.beginPath()
+    ctx.moveTo(c + Math.cos(a) * (r - res / 48), c + Math.sin(a) * (r - res / 48))
+    ctx.lineTo(c + Math.cos(a) * (r + res / 48), c + Math.sin(a) * (r + res / 48))
+    ctx.stroke()
+  }
+  ctx.fillStyle = 'rgba(1,6,17,0.8)'
+  for (const base of [Math.PI / 4, Math.PI + Math.PI / 4]) {
+    const ax = c + Math.cos(base) * r
+    const ay = c + Math.sin(base) * r
+    const t = base + Math.PI / 2
+    const size = res / 36
+    ctx.beginPath()
+    ctx.moveTo(ax + Math.cos(t) * size, ay + Math.sin(t) * size)
+    ctx.lineTo(ax + Math.cos(base) * size * 0.6, ay + Math.sin(base) * size * 0.6)
+    ctx.lineTo(ax - Math.cos(base) * size * 0.6, ay - Math.sin(base) * size * 0.6)
+    ctx.closePath()
+    ctx.fill()
+  }
+
+  const tex = new CanvasTexture(canvas)
+  tex.colorSpace = SRGBColorSpace
+  return tex
+}
+
+/** Blueprint-style target: white outline, hatched fill and figure label. */
 export function maskTexture(mask: Mask, res: number, label: string): CanvasTexture {
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = res
@@ -97,36 +139,6 @@ export function maskTexture(mask: Mask, res: number, label: string): CanvasTextu
     }
   }
   ctx.putImageData(img, 0, 0)
-
-  const c = res / 2
-  const r = res * 0.47
-  ctx.strokeStyle = 'rgba(255,255,255,0.45)'
-  ctx.lineWidth = Math.max(1, res / 256)
-  ctx.setLineDash([res / 64, res / 96])
-  ctx.beginPath()
-  ctx.arc(c, c, r, 0, Math.PI * 2)
-  ctx.stroke()
-  ctx.setLineDash([])
-  for (let k = 0; k < 4; k++) {
-    const a = (k * Math.PI) / 2
-    ctx.beginPath()
-    ctx.moveTo(c + Math.cos(a) * (r - res / 48), c + Math.sin(a) * (r - res / 48))
-    ctx.lineTo(c + Math.cos(a) * (r + res / 48), c + Math.sin(a) * (r + res / 48))
-    ctx.stroke()
-  }
-  ctx.fillStyle = 'rgba(255,255,255,0.7)'
-  for (const base of [Math.PI / 4, Math.PI + Math.PI / 4]) {
-    const ax = c + Math.cos(base) * r
-    const ay = c + Math.sin(base) * r
-    const t = base + Math.PI / 2
-    const size = res / 36
-    ctx.beginPath()
-    ctx.moveTo(ax + Math.cos(t) * size, ay + Math.sin(t) * size)
-    ctx.lineTo(ax + Math.cos(base) * size * 0.6, ay + Math.sin(base) * size * 0.6)
-    ctx.lineTo(ax - Math.cos(base) * size * 0.6, ay - Math.sin(base) * size * 0.6)
-    ctx.closePath()
-    ctx.fill()
-  }
 
   ctx.font = `${res / 26}px ui-monospace, monospace`
   ctx.fillStyle = 'rgba(255,255,255,0.6)'

@@ -1,21 +1,15 @@
 const STATS_KEY = 'silhouetto:stats'
 
 export interface Stats {
-  best: number | null
-  solved: number
-  /** Sum of solve times in ms, for the average. */
-  totalTime: number
+  bestScore: number
 }
 
 export function loadStats(): Stats {
   try {
     const raw = JSON.parse(localStorage.getItem(STATS_KEY) ?? '{}') as Partial<Stats>
-    const solved = raw.solved ?? 0
-    // saves from before the average existed have no total; seed it so the average starts at the best time
-    const totalTime = raw.totalTime ?? (raw.best ?? 0) * solved
-    return { best: raw.best ?? null, solved, totalTime }
+    return { bestScore: raw.bestScore ?? 0 }
   } catch {
-    return { best: null, solved: 0, totalTime: 0 }
+    return { bestScore: 0 }
   }
 }
 

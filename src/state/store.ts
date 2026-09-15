@@ -6,8 +6,11 @@ import { loadStats, saveStats } from '../lib/stats'
 /** Seconds of celebration before the next puzzle loads. */
 const ADVANCE_MS = 1600
 const MUTE_KEY = 'silhouetto:muted'
+const HELP_KEY = 'silhouetto:helpSeen'
 // kept from the old practice mode so links shared before the redesign still open the same puzzle
 const SEED_PREFIX = 'practice-'
+export const MAX_SOLVES = 3
+const MAX_DIFFICULTY = 12
 
 interface GameState {
   seed: string
@@ -19,53 +22,87 @@ interface GameState {
   startedAt: number | null
   /** Final solve time in ms. */
   time: number | null
-  newBest: boolean
-  best: number | null
+  /** Points awarded for the last solve. */
+  points: number
+  score: number
+  bestScore: number
+  difficulty: number
+  solvesLeft: number
+  /** The Solve button is playing the moves back; the player's input is locked out. */
+  autoSolving: boolean
   solvedCount: number
-  totalTime: number
+  sessionOver: boolean
   muted: boolean
-  didTumble: boolean
-  didSpin: boolean
-  markTumble: () => void
-  markSpin: () => void
+  /** Net roll applied this puzzle, in radians; the dial ring on the wall follows it. */
+  roll: number
+  helpOpen: boolean
+  rollBy: (delta: number) => void
+  openHelp: () => void
+  closeHelp: () => void
   setLevel: (level: Level) => void
   setMatch: (match: number) => void
   begin: () => void
   solve: (match: number) => void
-  next: () => void
+  autoSolve: () => void
+  endRun: () => void
+  restart: () => void
   toggleMute: () => void
 }
 
 const randomId = () => Math.random().toString(36).slice(2, 10)
 
-function seedFromUrl(id: string) {
-  history.replaceState(null, '', `${location.pathname}?p=${id}`)
-  return SEED_PREFIX + id
+function seedFor(difficulty: number, id = randomId()) {
+  history.replaceState(null, '', `${location.pathname}?p=${difficulty}.${id}`)
+  return `${SEED_PREFIX}${difficulty}.${id}`
 }
 
+/** Shared links: `?p=3.k2j4h` (difficulty.id) or a bare legacy id. */
+function seedFromUrl(): { seed: string; difficulty: number } | null {
+  const p = new URLSearchParams(location.search).get('p')
+  if (!p) return null
+  const m = p.match(/^(\d+)\.(.+)$/)
+  const difficulty = m ? Math.max(1, Math.min(MAX_DIFFICULTY, Number(m[1]))) : 1
+  return { seed: SEED_PREFIX + p, difficulty }
+}
+
+/**
+ * Faster than par earns more; par grows with difficulty so hard puzzles are
+ * worth more even when they take a while.
+ */
+function pointsFor(difficulty: number, timeMs: number): number {
+  const par = (12 + 8 * difficulty) * 1000
+  const mult = Math.min(3, Math.max(0.25, par / Math.max(timeMs, 3000)))
+  return Math.round(100 * difficulty * mult)
+}
+
+const shared = seedFromUrl()
 const stats = loadStats()
 
 export const useGame = create<GameState>((set, get) => ({
-  seed: seedFromUrl(new URLSearchParams(location.search).get('p') ?? randomId()),
+  seed: shared?.seed ?? seedFor(1),
   level: null,
   match: 0,
   peak: 0,
   solved: false,
   startedAt: null,
   time: null,
-  newBest: false,
-  best: stats.best,
-  solvedCount: stats.solved,
-  totalTime: stats.totalTime,
+  points: 0,
+  score: 0,
+  bestScore: stats.bestScore,
+  difficulty: shared?.difficulty ?? 1,
+  solvesLeft: MAX_SOLVES,
+  autoSolving: false,
+  solvedCount: 0,
+  sessionOver: false,
   muted: localStorage.getItem(MUTE_KEY) === '1',
-  didTumble: false,
-  didSpin: false,
+  roll: 0,
+  helpOpen: localStorage.getItem(HELP_KEY) !== '1',
 
-  markTumble: () => {
-    if (!get().didTumble) set({ didTumble: true })
-  },
-  markSpin: () => {
-    if (!get().didSpin) set({ didSpin: true })
+  rollBy: (delta) => set({ roll: get().roll + delta }),
+  openHelp: () => set({ helpOpen: true }),
+  closeHelp: () => {
+    localStorage.setItem(HELP_KEY, '1')
+    set({ helpOpen: false })
   },
 
   setLevel: (level) => {
@@ -74,7 +111,7 @@ export const useGame = create<GameState>((set, get) => ({
       old.geometry.dispose()
       old.targetTexture.dispose()
     }
-    set({ level, solved: false, match: 0, peak: 0, startedAt: null, time: null, newBest: false })
+    set({ level, solved: false, match: 0, peak: 0, startedAt: null, time: null, points: 0, roll: 0, autoSolving: false })
   },
 
   setMatch: (match) => {
@@ -93,21 +130,49 @@ export const useGame = create<GameState>((set, get) => ({
   },
 
   solve: (match) => {
-    const { startedAt, best, solvedCount, totalTime, seed } = get()
+    const { startedAt, difficulty, score, bestScore, solvedCount, seed, autoSolving } = get()
     const time = startedAt === null ? 0 : performance.now() - startedAt
-    const newBest = best === null || time < best
-    const next = { best: newBest ? time : best, solved: solvedCount + 1, totalTime: totalTime + time }
-    saveStats(next)
+    // a bought solve moves on to a fresh puzzle at the same level, for nothing
+    const points = autoSolving ? 0 : pointsFor(difficulty, time)
+    const total = score + points
+    const best = Math.max(bestScore, total)
+    if (best > bestScore) saveStats({ bestScore: best })
     if (!get().muted) sound.win()
     navigator.vibrate?.([20, 40, 30])
-    set({ solved: true, match, time, newBest, best: next.best, solvedCount: next.solved, totalTime: next.totalTime })
+    set({
+      solved: true,
+      match,
+      time,
+      points,
+      score: total,
+      bestScore: best,
+      solvedCount: autoSolving ? solvedCount : solvedCount + 1,
+      difficulty: autoSolving ? difficulty : Math.min(difficulty + 1, MAX_DIFFICULTY),
+    })
     setTimeout(() => {
-      if (get().seed === seed) get().next()
+      if (get().seed === seed && !get().sessionOver) set({ seed: seedFor(get().difficulty) })
     }, ADVANCE_MS)
   },
 
-  next: () => {
-    set({ seed: seedFromUrl(randomId()) })
+  autoSolve: () => {
+    const { solvesLeft, solved, autoSolving, sessionOver, level } = get()
+    if (solvesLeft === 0 || solved || autoSolving || sessionOver || !level) return
+    get().begin()
+    set({ solvesLeft: solvesLeft - 1, autoSolving: true })
+  },
+
+  endRun: () => set({ sessionOver: true }),
+
+  restart: () => {
+    set({
+      score: 0,
+      points: 0,
+      solvedCount: 0,
+      solvesLeft: MAX_SOLVES,
+      difficulty: 1,
+      sessionOver: false,
+      seed: seedFor(1),
+    })
   },
 
   toggleMute: () => {

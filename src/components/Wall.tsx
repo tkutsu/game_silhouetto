@@ -64,7 +64,7 @@ export function Wall() {
       </mesh>
       <mesh position={[0, 0, WALL_Z + 0.002]} receiveShadow>
         <planeGeometry args={[WORLD_W, WORLD_H]} />
-        <shadowMaterial color="#010611" opacity={0.78} transparent depthWrite={false} />
+        <shadowMaterial color="#010611" opacity={0.6} transparent depthWrite={false} />
       </mesh>
     </>
   )

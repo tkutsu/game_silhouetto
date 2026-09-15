@@ -24,3 +24,95 @@ body,
     }
   }
 }
+
+@keyframes rumble {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(calc(var(--amp) * 1px), calc(var(--amp) * -0.7px));
+  }
+  40% {
+    transform: translate(calc(var(--amp) * -0.9px), calc(var(--amp) * 0.6px));
+  }
+  60% {
+    transform: translate(calc(var(--amp) * 0.7px), calc(var(--amp) * 0.9px));
+  }
+  80% {
+    transform: translate(calc(var(--amp) * -0.6px), calc(var(--amp) * -1px));
+  }
+}
+
+@keyframes flicker {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.55);
+  }
+}
+
+/* Help-overlay demos: the piece tumbles freely; the shadow's turns land in clicks
+   with a slight overshoot, like the game. */
+.demo-tumble {
+  animation: demo-tumble 2.6s ease-in-out infinite alternate;
+}
+.demo-spin {
+  animation: demo-spin-clicks 2.6s ease-in-out infinite alternate;
+}
+.demo-drag {
+  animation: demo-drag 2.6s ease-in-out infinite alternate;
+}
+.demo-orbit {
+  animation: demo-orbit 2.6s ease-in-out infinite alternate;
+}
+
+@keyframes demo-tumble {
+  from {
+    transform: perspective(220px) rotate3d(0.4, 1, 0, -34deg);
+  }
+  to {
+    transform: perspective(220px) rotate3d(0.4, 1, 0, 34deg);
+  }
+}
+
+@keyframes demo-spin-clicks {
+  0%,
+  15% {
+    transform: rotate(-45deg);
+  }
+  24% {
+    transform: rotate(6deg);
+  }
+  30%,
+  55% {
+    transform: rotate(0deg);
+  }
+  64% {
+    transform: rotate(51deg);
+  }
+  70%,
+  100% {
+    transform: rotate(45deg);
+  }
+}
+
+@keyframes demo-drag {
+  from {
+    transform: translateX(-34px);
+  }
+  to {
+    transform: translateX(34px);
+  }
+}
+
+@keyframes demo-orbit {
+  from {
+    transform: rotate(-70deg);
+  }
+  to {
+    transform: rotate(70deg);
+  }
+}

@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# showcase candidates, fetched by showcase/fetch-models.py
+showcase/models
