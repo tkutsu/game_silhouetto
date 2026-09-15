@@ -58,7 +58,7 @@ export function partMaterials(kinds: string[], gl: WebGLRenderer): MeshStandardM
         roughness: 0.3,
         envMap: reflections(gl),
         envMapIntensity: 0.9,
-        // removeNubs leaves holes inside neighboring parts; their back faces must still render
+        // some models have open, single-sided bits (leaves, stems)
         side: DoubleSide,
       })
       cache.set(palette, material)
