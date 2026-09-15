@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { WIN_IOU } from '../lib/constants'
 import { formatTime } from '../lib/stats'
-import { MAX_SOLVES, useGame } from '../state/store'
+import { timeLimitFor, useGame } from '../state/store'
 import { Help } from './Help'
 
-function Timer() {
+/** Counts down from the puzzle's time limit once the player first touches it. */
+function Countdown() {
   const startedAt = useGame((s) => s.startedAt)
   const time = useGame((s) => s.time)
+  const level = useGame((s) => s.level)
   const [now, setNow] = useState(() => performance.now())
 
   useEffect(() => {
@@ -16,7 +18,22 @@ function Timer() {
   }, [startedAt, time])
 
   const elapsed = time ?? (startedAt === null ? 0 : now - startedAt)
-  return <span className="font-mono text-lg tabular-nums">{formatTime(elapsed)}</span>
+  if (!level) return null
+  const left = Math.max(0, timeLimitFor(level) - elapsed)
+  return (
+    <span className={`font-mono text-lg tabular-nums ${left < 10_000 && time === null ? 'text-rose-400' : ''}`}>
+      {formatTime(left)}
+    </span>
+  )
+}
+
+function NoteIcon({ muted }: { muted: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+      <path d="M9 17.5a3 3 0 1 1-2-2.83V5l12-2.5v12a3 3 0 1 1-2-2.83V6.9l-8 1.66z" />
+      {muted && <path d="M3 3l18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />}
+    </svg>
+  )
 }
 
 const SEGMENTS = 10
@@ -72,10 +89,11 @@ function SolvedToast() {
   const time = useGame((s) => s.time)
   const points = useGame((s) => s.points)
   const autoSolving = useGame((s) => s.autoSolving)
+  const timedOut = useGame((s) => s.timedOut)
   if (!solved || time === null) return null
   return (
     <div className="animate-pop absolute top-24 left-1/2 -translate-x-1/2 rounded-2xl border border-amber-400/40 bg-slate-900/80 px-7 py-3 text-center backdrop-blur-sm">
-      <div className="font-mono text-3xl text-amber-300">{autoSolving ? 'Solved' : `+${points}`}</div>
+      <div className="font-mono text-3xl text-amber-300">{timedOut ? "Time's up" : autoSolving ? 'Solved' : `+${points}`}</div>
       <div className="text-xs tracking-widest text-slate-300 uppercase">{formatTime(time)}</div>
     </div>
   )
@@ -86,10 +104,11 @@ function SessionOver() {
   const bestScore = useGame((s) => s.bestScore)
   const solvedCount = useGame((s) => s.solvedCount)
   const restart = useGame((s) => s.restart)
+  const timedOut = useGame((s) => s.timedOut)
   return (
     <div className="pointer-events-auto absolute inset-0 z-10 flex items-center justify-center bg-black/50 p-4 backdrop-blur-[3px]">
       <div className="w-full max-w-xs rounded-2xl border border-slate-700 bg-slate-900/95 p-7 text-center shadow-2xl">
-        <p className="text-xs tracking-widest text-amber-400 uppercase">Session over</p>
+        <p className="text-xs tracking-widest text-amber-400 uppercase">{timedOut ? 'Out of time' : 'Session over'}</p>
         <div className="my-5">
           <div className="font-mono text-5xl text-amber-300">{score}</div>
           <div className="mt-1 text-xs tracking-widest text-slate-400 uppercase">points</div>
@@ -129,6 +148,9 @@ export function HUD() {
           <h1 className="text-2xl font-semibold tracking-tight">Silhouetto</h1>
           <p className="flex flex-wrap gap-x-3 text-sm whitespace-nowrap text-slate-400">
             <span>
+              LV <span className="font-mono text-slate-200">{difficulty}</span>
+            </span>
+            <span>
               Score <span className="font-mono text-amber-300">{score}</span>
             </span>
             {bestScore > 0 && (
@@ -139,36 +161,33 @@ export function HUD() {
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm">
-          <span className="rounded-full border border-slate-700 px-2.5 py-1 text-xs tracking-wider text-slate-300">
-            LV {difficulty}
-          </span>
-          <Timer />
+          <Countdown />
           <button
-            className="pointer-events-auto rounded-full border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-slate-500 hover:text-white"
+            className="pointer-events-auto rounded-full px-3 py-1.5 text-slate-300 hover:text-white"
             onClick={openHelp}
             aria-label="How to play"
           >
             ?
           </button>
           <button
-            className="pointer-events-auto rounded-full border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-slate-500 hover:text-white"
+            className={`pointer-events-auto rounded-full px-3 py-1.5 hover:text-white ${muted ? 'text-slate-500' : 'text-slate-300'}`}
             onClick={toggleMute}
             aria-label={muted ? 'Unmute' : 'Mute'}
           >
-            {muted ? '🔇' : '🔊'}
+            <NoteIcon muted={muted} />
           </button>
           {solvesLeft > 0 ? (
             <button
-              className="pointer-events-auto rounded-full border border-slate-700 px-3 py-1.5 text-slate-300 enabled:hover:border-slate-500 enabled:hover:text-white disabled:opacity-40"
+              className="pointer-events-auto rounded-full px-3 py-1.5 text-slate-300 enabled:hover:text-white disabled:opacity-40"
               onClick={autoSolve}
               disabled={!canSolve}
               title="Turns the piece into place for you. No points."
             >
-              Solve {'·'.repeat(solvesLeft)}
+              Solve <span className="font-mono text-amber-300">{solvesLeft}</span>
             </button>
           ) : (
             <button
-              className="pointer-events-auto rounded-full border border-rose-500/60 px-3 py-1.5 text-rose-300 hover:border-rose-400"
+              className="pointer-events-auto rounded-full px-3 py-1.5 text-rose-300 hover:text-rose-200"
               onClick={endRun}
             >
               End run
@@ -187,7 +206,7 @@ export function HUD() {
       <footer className="flex flex-col items-center gap-3">
         <MatchMeter />
         <p className="text-center text-xs text-slate-500">
-          Fit the shadow into the outline · the dial clicks in 15° steps · {MAX_SOLVES} solves per run
+          Fit the shadow into the outline · the dial clicks in 15° steps · running out of time spends a solve
         </p>
       </footer>
     </div>

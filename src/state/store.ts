@@ -22,6 +22,8 @@ interface GameState {
   startedAt: number | null
   /** Final solve time in ms. */
   time: number | null
+  /** The countdown ran out and spent a Solve (or ended the run). */
+  timedOut: boolean
   /** Points awarded for the last solve. */
   points: number
   score: number
@@ -65,12 +67,21 @@ function seedFromUrl(): { seed: string; difficulty: number } | null {
   return { seed: SEED_PREFIX + p, difficulty }
 }
 
+const parMs = (difficulty: number) => (12 + 8 * difficulty) * 1000
+
+/** A lone object gives the fewest clues, so those puzzles get this much longer. */
+const SINGLE_OBJECT_BONUS_MS = 20_000
+
+/** The countdown per puzzle; running out spends a Solve. */
+export const timeLimitFor = (level: Level) =>
+  2 * parMs(level.difficulty) + (level.kinds.length === 1 ? SINGLE_OBJECT_BONUS_MS : 0)
+
 /**
  * Faster than par earns more; par grows with difficulty so hard puzzles are
  * worth more even when they take a while.
  */
 function pointsFor(difficulty: number, timeMs: number): number {
-  const par = (12 + 8 * difficulty) * 1000
+  const par = parMs(difficulty)
   const mult = Math.min(3, Math.max(0.25, par / Math.max(timeMs, 3000)))
   return Math.round(100 * difficulty * mult)
 }
@@ -93,6 +104,7 @@ export const useGame = create<GameState>((set, get) => ({
   solved: false,
   startedAt: null,
   time: null,
+  timedOut: false,
   points: 0,
   score: 0,
   bestScore: stats.bestScore,
@@ -118,7 +130,18 @@ export const useGame = create<GameState>((set, get) => ({
       old.geometry.dispose()
       old.targetTexture.dispose()
     }
-    set({ level, solved: false, match: 0, peak: 0, startedAt: null, time: null, points: 0, roll: 0, autoSolving: false })
+    set({
+      level,
+      solved: false,
+      match: 0,
+      peak: 0,
+      startedAt: null,
+      time: null,
+      timedOut: false,
+      points: 0,
+      roll: 0,
+      autoSolving: false,
+    })
   },
 
   setMatch: (match) => {
@@ -133,7 +156,18 @@ export const useGame = create<GameState>((set, get) => ({
   },
 
   begin: () => {
-    if (get().startedAt === null) set({ startedAt: performance.now() })
+    const { startedAt, level, seed } = get()
+    if (startedAt !== null || !level) return
+    const started = performance.now()
+    set({ startedAt: started })
+    // the clock runs from the first touch; out of time spends a Solve, or ends the run without one
+    setTimeout(() => {
+      const s = get()
+      if (s.seed !== seed || s.startedAt !== started || s.solved || s.autoSolving || s.sessionOver) return
+      set({ timedOut: true })
+      if (s.solvesLeft > 0) s.autoSolve()
+      else s.endRun()
+    }, timeLimitFor(level))
   },
 
   solve: (match) => {

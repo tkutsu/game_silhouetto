@@ -7,7 +7,7 @@ export const LIGHT_Z = 10
 export const SCORE_RES = 128
 export const TARGET_RES = 1024
 
-export const WIN_IOU = 0.88
+export const WIN_IOU = 0.86
 export const DEGENERATE_IOU = 0.75
 
 /** Fixed camera pose; the pitch axis in level.ts is derived from it. */

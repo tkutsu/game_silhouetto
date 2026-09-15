@@ -126,7 +126,9 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
     }
 
     const active = () => {
-      if (useGame.getState().solved || useGame.getState().autoSolving) return false
+      const game = useGame.getState()
+      // the help overlay covers the canvas, but keys would still reach the piece and start the clock
+      if (game.solved || game.autoSolving || game.helpOpen) return false
       useGame.getState().begin()
       return true
     }
