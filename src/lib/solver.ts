@@ -136,6 +136,49 @@ export function searchMoves(start: Quaternion, solution: Quaternion, wins: (q: Q
   return null
 }
 
+/** The tree path from `start` whose end sits closest to `solution`; empty if no step gets nearer. */
+function closer(start: Quaternion, solution: Quaternion): Move[] {
+  const t = tree()
+  const q = new Quaternion()
+  let best = 0
+  let bestDot = Math.abs(start.dot(solution))
+  for (let i = 1; i < t.size; i++) {
+    const dot = Math.abs(q.fromArray(t.quat, i * 4).multiply(start).dot(solution))
+    if (dot > bestDot) {
+      best = i
+      bestDot = dot
+    }
+  }
+  return pathTo(t, best)
+}
+
+/**
+ * Moves from the piece's current orientation to a win. Hops toward the solution until the
+ * search can finish the job, so a long wander isn't replayed backwards; the exact retrace
+ * is kept when it's shorter or the hops stall.
+ */
+export function solveFrom(
+  start: Quaternion,
+  solution: Quaternion,
+  wins: (q: Quaternion) => boolean,
+  scramble: Move[],
+  history: Move[],
+): Move[] {
+  const back = retrace(scramble, history)
+  const path: Move[] = []
+  const q = start.clone()
+  const turn = new Quaternion()
+  while (path.length < back.length) {
+    const rest = searchMoves(q, solution, wins)
+    if (rest) return path.length + rest.length <= back.length ? [...path, ...rest] : back
+    const hop = closer(q, solution)
+    if (hop.length === 0) break
+    for (const { axis, dir } of hop) q.premultiply(turn.setFromAxisAngle(axis, dir * STEP))
+    path.push(...hop)
+  }
+  return back
+}
+
 /**
  * The exact way back when no short path exists: undo the player's turns, then the
  * scramble's, skipping pairs that cancel.

@@ -8,7 +8,7 @@ import { AXES, type Level, type Move } from '../lib/level'
 import { partMaterials } from '../lib/materials'
 import { iou, type Silhouetter } from '../lib/silhouette'
 import * as sound from '../lib/sound'
-import { retrace, searchMoves } from '../lib/solver'
+import { solveFrom } from '../lib/solver'
 import { dials, useGame } from '../state/store'
 
 const WHEEL_PER_RADIAN = 500
@@ -293,7 +293,7 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
       if (game.autoSolving) {
         if (s.plan === null) {
           const wins = (q: Quaternion) => iou(sil.render(level.geometry, q, SCORE_RES), level.target) >= level.winIou
-          s.plan = searchMoves(s.q, level.solution, wins) ?? retrace(level.scramble, s.history)
+          s.plan = solveFrom(s.q, level.solution, wins, level.scramble, s.history)
         }
         const next = now >= s.nextMove ? s.plan.shift() : undefined
         if (next) {
