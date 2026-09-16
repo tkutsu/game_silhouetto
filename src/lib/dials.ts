@@ -26,7 +26,8 @@ const dial = (i: number, center: Vector3, knob: number): Dial => ({
 
 /** Side wall (pitch), floor (yaw) and back wall (roll), indexed like AXES. */
 export const DIALS = [
-  dial(0, new Vector3(SIDE_X, 0, 0), 1.2),
+  // near the ring's top, the one stretch of the side ring portrait screens keep in frame
+  dial(0, new Vector3(SIDE_X, 0, 0), -0.35),
   dial(1, new Vector3(0, FLOOR_Y, 0), 0.7),
   dial(2, new Vector3(0, 0, WALL_Z), -0.5),
 ]
@@ -54,12 +55,15 @@ export function project(ray: Ray, i: number): { angle: number; r: number; dist: 
   return { angle: Math.atan2(b, a), r: Math.hypot(a, b), dist }
 }
 
-/** The dial under a ray: the nearest blueprint it hits, if the hit lands on that blueprint's dial. */
-export function dialAt(ray: Ray): { i: number; angle: number; r: number } | null {
+/**
+ * The dial under a ray: the nearest blueprint it hits, if the hit lands on that blueprint's
+ * dial. With `anywhere` the whole blueprint counts — on touch, each wall is its own dial.
+ */
+export function dialAt(ray: Ray, anywhere = false): { i: number; angle: number; r: number } | null {
   let best: { i: number; angle: number; r: number; dist: number } | null = null
   for (let i = 0; i < DIALS.length; i++) {
     const p = project(ray, i)
     if (p && (!best || p.dist < best.dist)) best = { i, ...p }
   }
-  return best && best.r <= DIAL_OUTER ? best : null
+  return best && (anywhere || best.r <= DIAL_OUTER) ? best : null
 }

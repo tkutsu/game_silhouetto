@@ -150,7 +150,7 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
 
     const down = (e: PointerEvent) => {
       if (!active()) return
-      const hit = dialAt(cast(e))
+      const hit = dialAt(cast(e), e.pointerType === 'touch')
       // grab only a dial; a second finger may land anywhere (twist gesture)
       if (pointers.size === 0 && hit === null) return
       el.setPointerCapture(e.pointerId)

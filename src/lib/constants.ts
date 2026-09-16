@@ -21,6 +21,9 @@ export const DEGENERATE_IOU = 0.8
 /** Fixed camera pose, looking into the corner of the three blueprints. */
 export const CAM_POS = [5.8, 3.6, 7.6] as const
 export const CAM_TARGET = [-0.6, -0.8, -1.2] as const
+/** Portrait pose: more frontal and higher, so wall, piece and floor dial stack vertically. */
+export const CAM_POS_PORTRAIT = [4.4, 4.4, 8.2] as const
+export const CAM_TARGET_PORTRAIT = [-0.6, 0, -1.2] as const
 
 /** Rotation increment in radians; every move snaps to this grid. */
 export const STEP = Math.PI / 12

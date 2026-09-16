@@ -1,24 +1,35 @@
 import { Canvas, useThree } from '@react-three/fiber'
 import { useEffect } from 'react'
-import { NeutralToneMapping, type PerspectiveCamera } from 'three'
-import { CAM_POS, CAM_TARGET, FRAME, LIGHT_Z } from '../lib/constants'
+import { NeutralToneMapping, Vector3, type PerspectiveCamera } from 'three'
+import { CAM_POS, CAM_POS_PORTRAIT, CAM_TARGET, CAM_TARGET_PORTRAIT, FRAME, LIGHT_Z } from '../lib/constants'
 import { Blueprints } from './Blueprints'
 import { LevelView } from './LevelView'
 
 const S = FRAME * 1.2
 const FOV = 36
+/** Aspect range over which the camera swings from the landscape pose to the portrait one. */
+const LANDSCAPE_ASPECT = 1
+const PORTRAIT_ASPECT = 0.62
+/** Horizontal extent to preserve, in aspect terms; the portrait pose needs less width, so it shrinks less. */
 const MIN_ASPECT = 1
+const MIN_ASPECT_PORTRAIT = 0.78
 
-/** Keeps the horizontal view wide enough on portrait screens. */
+const a = new Vector3()
+const b = new Vector3()
+
+/** Swings toward the stacked portrait pose as the screen narrows, widening the view only as much as the pose needs. */
 function CameraRig() {
   const get = useThree((s) => s.get)
   const aspect = useThree((s) => s.size.width / s.size.height)
 
   useEffect(() => {
     const camera = get().camera as PerspectiveCamera
-    const halfTan = Math.tan((FOV * Math.PI) / 360) * Math.max(1, MIN_ASPECT / aspect)
+    const t = Math.min(1, Math.max(0, (LANDSCAPE_ASPECT - aspect) / (LANDSCAPE_ASPECT - PORTRAIT_ASPECT)))
+    const minAspect = MIN_ASPECT + (MIN_ASPECT_PORTRAIT - MIN_ASPECT) * t
+    const halfTan = Math.tan((FOV * Math.PI) / 360) * Math.max(1, minAspect / aspect)
     camera.fov = (Math.atan(halfTan) * 360) / Math.PI
-    camera.lookAt(...CAM_TARGET)
+    camera.position.copy(a.set(...CAM_POS).lerp(b.set(...CAM_POS_PORTRAIT), t))
+    camera.lookAt(a.set(...CAM_TARGET).lerp(b.set(...CAM_TARGET_PORTRAIT), t))
     camera.updateProjectionMatrix()
   }, [get, aspect])
 

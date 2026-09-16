@@ -7,6 +7,21 @@ body,
   margin: 0;
   background: #081120;
   font-family: ui-sans-serif, system-ui, sans-serif;
+  /* no pull-to-refresh or rubber-banding mid-drag */
+  overscroll-behavior: none;
+}
+
+/* HUD padding that also clears notches and the home indicator. */
+.safe-pad {
+  --pad: 1rem;
+  padding: max(var(--pad), env(safe-area-inset-top)) max(var(--pad), env(safe-area-inset-right))
+    max(var(--pad), env(safe-area-inset-bottom)) max(var(--pad), env(safe-area-inset-left));
+}
+
+@media (min-width: 640px) {
+  .safe-pad {
+    --pad: 1.5rem;
+  }
 }
 
 @theme {

@@ -143,7 +143,7 @@ export function HUD() {
   const openHelp = useGame((s) => s.openHelp)
 
   return (
-    <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-4 sm:p-6">
+    <div className="safe-pad pointer-events-none absolute inset-0 flex flex-col justify-between">
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Silhouetto</h1>
