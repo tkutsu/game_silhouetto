@@ -1,3 +1,4 @@
+import { useInstall } from '../lib/install'
 import { useGame } from '../state/store'
 
 /** A dashed dial with its knob clicking round, like the ones on the blueprints. */
@@ -14,6 +15,8 @@ function DialDemo() {
 export function Help() {
   const helpOpen = useGame((s) => s.helpOpen)
   const closeHelp = useGame((s) => s.closeHelp)
+  const installMode = useInstall((s) => s.mode)
+  const install = useInstall((s) => s.install)
   if (!helpOpen) return null
   return (
     <div className="pointer-events-auto absolute inset-0 z-20 flex items-center justify-center bg-black/60 p-4 backdrop-blur-[3px]">
@@ -32,6 +35,14 @@ export function Help() {
         >
           Play
         </button>
+        {installMode === 'prompt' && (
+          <button className="mt-3 w-full rounded-full py-2 text-sm text-slate-300 hover:text-white" onClick={install}>
+            Install app
+          </button>
+        )}
+        {installMode === 'ios' && (
+          <p className="mt-4 text-xs text-slate-500">To install, tap Share, then Add to Home Screen.</p>
+        )}
       </div>
     </div>
   )
