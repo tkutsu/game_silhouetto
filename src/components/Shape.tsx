@@ -46,11 +46,14 @@ const springAxis = new Vector3()
 
 const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
 
+/** Vibration per dial click, distinct enough to feel which axis moved: pitch taps twice, yaw thuds, roll flutters. */
+const HAPTICS: number[][] = [[8, 40, 8], [18], [4, 25, 4, 25, 4]]
+
 interface PointerState {
   x: number
   y: number
-  /** The grabbed dial's index; null for a second finger, which twists the roll. */
-  dial: number | null
+  /** The grabbed dial's index; each finger turns its own dial. */
+  dial: number
   /** Screen direction (unit, CSS px) a straight pull turns the dial forward along. */
   dx: number
   dy: number
@@ -97,7 +100,7 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
     s.squash = 1
     s.dirty = true
     if (!useGame.getState().muted) sound.clunk()
-    navigator.vibrate?.(10)
+    navigator.vibrate?.(HAPTICS[i])
   }
 
   useEffect(() => {
@@ -151,23 +154,20 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
     const down = (e: PointerEvent) => {
       if (!active()) return
       const hit = dialAt(cast(e), e.pointerType === 'touch')
-      // grab only a dial; a second finger may land anywhere (twist gesture)
-      if (pointers.size === 0 && hit === null) return
+      if (hit === null) return
       el.setPointerCapture(e.pointerId)
-      const dir = hit
-        ? tangent(hit.i, hit.r > CENTRE_GRAB ? hit.angle : DIALS[hit.i].knob + dials.springs[hit.i].target)
-        : { dx: 0, dy: 0, scale: 1 }
+      // a dial nobody else holds starts from a clean slate
+      if (![...pointers.values()].some((p) => p.dial === hit.i)) acc[hit.i] = 0
       pointers.set(e.pointerId, {
         x: e.clientX,
         y: e.clientY,
-        dial: hit?.i ?? null,
-        ...dir,
-        angle: hit?.angle ?? Number.NaN,
+        dial: hit.i,
+        ...tangent(hit.i, hit.r > CENTRE_GRAB ? hit.angle : DIALS[hit.i].knob + dials.springs[hit.i].target),
+        angle: hit.angle,
         mx: 0,
         my: 0,
       })
-      if (pointers.size === 1) acc.fill(0)
-      dials.hot = hit?.i ?? dials.hot
+      dials.hot.add(hit.i)
       el.style.cursor = 'grabbing'
     }
 
@@ -207,34 +207,23 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
     const move = (e: PointerEvent) => {
       if (pointers.size === 0) {
         const hit = useGame.getState().solved ? null : dialAt(cast(e))
-        dials.hot = hit?.i ?? -1
+        dials.hot.clear()
+        if (hit) dials.hot.add(hit.i)
         el.style.cursor = hit ? 'grab' : 'default'
         return
       }
       const prev = pointers.get(e.pointerId)
       if (!prev || !active()) return
-
-      if (pointers.size === 1) {
-        if (prev.dial !== null) drag(prev, prev.dial, e)
-      } else {
-        const other = [...pointers].find(([id]) => id !== e.pointerId)?.[1]
-        if (other) {
-          const before = Math.atan2(prev.y - other.y, prev.x - other.x)
-          const after = Math.atan2(e.clientY - other.y, e.clientX - other.x)
-          acc[2] -= wrapAngle(after - before)
-          drain(2)
-        }
-      }
-
+      drag(prev, prev.dial, e)
       prev.x = e.clientX
       prev.y = e.clientY
     }
 
     const up = (e: PointerEvent) => {
       pointers.delete(e.pointerId)
-      if (pointers.size > 0) return
-      dials.hot = -1
-      el.style.cursor = 'default'
+      dials.hot.clear()
+      for (const p of pointers.values()) dials.hot.add(p.dial)
+      if (pointers.size === 0) el.style.cursor = 'default'
     }
 
     const wheel = (e: WheelEvent) => {

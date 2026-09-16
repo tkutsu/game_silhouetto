@@ -64,7 +64,7 @@ function Blueprint({ index, map, ring }: { index: number; map: Texture; ring: Te
     spring.angle += spring.vel * dt
     if (spin.current) spin.current.rotation.z = knob + spring.angle
     const p = puck.current
-    if (p) p.scale.setScalar(p.scale.x + ((dials.hot === index ? KNOB_HOT : 1) - p.scale.x) * (1 - Math.exp(-dt * 14)))
+    if (p) p.scale.setScalar(p.scale.x + ((dials.hot.has(index) ? KNOB_HOT : 1) - p.scale.x) * (1 - Math.exp(-dt * 14)))
   })
 
   return (

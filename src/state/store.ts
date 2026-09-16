@@ -90,10 +90,10 @@ const stats = loadStats()
 /**
  * Visual state of the pitch, yaw and roll dials: each spring chases its committed turns,
  * so a dial's ring and knob turn in step with the piece. The blueprints advance them each
- * frame; a new level resets them. `hot` is the hovered or grabbed dial, -1 for none.
+ * frame; a new level resets them. `hot` holds the hovered dial, or every grabbed one.
  */
 export const dials = {
-  hot: -1,
+  hot: new Set<number>(),
   springs: [0, 1, 2].map(() => ({ target: 0, angle: 0, vel: 0 })),
 }
 

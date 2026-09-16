@@ -1,25 +1,15 @@
-import type { ReactNode } from 'react'
 import { useGame } from '../state/store'
 
-/** A dashed dial with its knob clicking round, tilted to lie on its blueprint. */
-function DialDemo({ tilt, children }: { tilt: string; children?: ReactNode }) {
+/** A dashed dial with its knob clicking round, like the ones on the blueprints. */
+function DialDemo() {
   return (
-    <div className="relative flex h-24 items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-[#12233c]">
-      <div style={{ transform: tilt }}>
-        <div className="demo-spin relative flex h-16 w-16 items-center justify-center rounded-full border border-dashed border-slate-400/70">
-          {children}
-          <div className="absolute top-1/2 -right-1.5 h-3 w-3 -translate-y-1/2 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]" />
-        </div>
+    <div className="mx-auto flex h-32 w-32 items-center justify-center">
+      <div className="demo-spin relative h-24 w-24 rounded-full border-2 border-dashed border-slate-400/70">
+        <div className="absolute top-1/2 -right-2.5 h-5 w-5 -translate-y-1/2 rounded-full bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.6)]" />
       </div>
     </div>
   )
 }
-
-const DIAL_DEMOS = [
-  { tilt: 'perspective(160px) rotateX(62deg)', label: 'Floor dial turns the piece' },
-  { tilt: 'perspective(160px) rotateY(58deg)', label: 'Side dial tips it' },
-  { tilt: 'none', label: 'Back dial rolls it' },
-]
 
 export function Help() {
   const helpOpen = useGame((s) => s.helpOpen)
@@ -27,21 +17,15 @@ export function Help() {
   if (!helpOpen) return null
   return (
     <div className="pointer-events-auto absolute inset-0 z-20 flex items-center justify-center bg-black/60 p-4 backdrop-blur-[3px]">
-      <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900/95 p-6 text-center shadow-2xl">
+      <div className="w-full max-w-xs rounded-2xl border border-slate-700 bg-slate-900/95 p-6 text-center shadow-2xl">
         <p className="text-xs tracking-widest text-amber-400 uppercase">How to play</p>
-        <p className="mt-3 text-sm leading-relaxed text-slate-300">
-          Pull the knobs on the three blueprints to turn the piece until its shadow fits the outline. Each dial clicks in 15° steps.
+        <DialDemo />
+        <p className="text-base leading-relaxed text-slate-200">
+          Each of the 3 dials turns the object on a different axis. Fit its shadow into the outline on the blueprint.
         </p>
-        <div className="mt-5 grid grid-cols-3 gap-2">
-          {DIAL_DEMOS.map(({ tilt, label }, i) => (
-            <div key={label}>
-              <DialDemo tilt={tilt}>
-                {i === 2 && <span className="text-2xl leading-none text-slate-300">★</span>}
-              </DialDemo>
-              <p className="mt-2 text-xs text-slate-400">{label}</p>
-            </div>
-          ))}
-        </div>
+        <p className="mt-4 text-xs leading-relaxed text-slate-400">
+          Dials click in 15° steps. Use two fingers to turn two at once. Running out of time spends a Solve.
+        </p>
         <button
           className="mt-6 w-full rounded-full bg-amber-400 py-2.5 font-medium text-slate-900 hover:bg-amber-300"
           onClick={closeHelp}

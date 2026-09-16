@@ -204,11 +204,8 @@ export function HUD() {
       {sessionOver && <SessionOver />}
       <Help />
 
-      <footer className="flex flex-col items-center gap-3">
+      <footer className="flex flex-col items-center">
         <MatchMeter />
-        <p className="text-center text-xs text-slate-500">
-          Fit the shadow into the outline · each dial clicks in 15° steps · running out of time spends a solve
-        </p>
       </footer>
     </div>
   )
