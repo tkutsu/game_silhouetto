@@ -1,19 +1,23 @@
 import { Quaternion, Vector3, type BufferGeometry, type CanvasTexture } from 'three'
-import { CAM_POS, CAM_TARGET, DEGENERATE_IOU, SCORE_RES, STEP, TARGET_RES, WIN_IOU } from './constants'
-import { generateShape, partsFor } from './generateShape'
+import { DEGENERATE_IOU, SCORE_RES, STEP, TARGET_RES, WIN_IOU } from './constants'
+import { disposeShape, generateShape, partsFor, type GeneratedShape, type ShapePart } from './generateShape'
 import { hashString, randomQuaternion, rngFor, type Rng } from './rng'
 import { coverage, iou, maskTexture, type Mask, type Silhouetter } from './silhouette'
 
 export interface Level {
   seed: string
   difficulty: number
-  /** Object kind per geometry group, in group order. */
+  /** Object kind per model, in `parts` order. */
   kinds: string[]
   geometry: BufferGeometry
+  /** The models on their own, for the win flourish; together they are `geometry`. */
+  parts: ShapePart[]
   solution: Quaternion
   start: Quaternion
   /** Grid moves that took the solution to `start`, in order. */
   scramble: Move[]
+  /** How close this puzzle's shadow has to fit to count, between DEGENERATE_IOU and WIN_IOU. */
+  winIou: number
   target: Mask
   targetTexture: CanvasTexture
 }
@@ -21,18 +25,8 @@ export interface Level {
 const PROBES = 24
 const MAX_ATTEMPTS = 20
 
-/**
- * Pitch about the camera's right vector, not world X: the camera sits ~34° off
- * the wall normal, so a world-X step would show up as more than half roll and
- * vertical drags would feel twisted. Yaw stays on world Y (turntable) and roll
- * on world Z (the light axis, which the shadow dial spins around).
- */
-const camRight = new Vector3(...CAM_TARGET)
-  .sub(new Vector3(...CAM_POS))
-  .cross(new Vector3(0, 1, 0))
-  .normalize()
-
-export const AXES = [camRight, new Vector3(0, 1, 0), new Vector3(0, 0, 1)]
+/** Pitch, yaw and roll: the normals of the side wall, floor and back wall blueprints. Roll is the light axis. */
+export const AXES = [new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, 1)]
 
 /** One grid step, premultiplied: `axis` is one of AXES. */
 export interface Move {
@@ -79,11 +73,40 @@ function decoys(solution: Quaternion): Quaternion[] {
   return list
 }
 
+/** The six orientations one click away: the nearest wrong answers, and the hardest to tell from the real one. */
+function neighbours(solution: Quaternion): Quaternion[] {
+  const turn = new Quaternion()
+  return AXES.flatMap((axis) => [-1, 1].map((dir) => solution.clone().premultiply(turn.setFromAxisAngle(axis, dir * STEP))))
+}
+
+/** Slack under the nearest click, so the pose that sets the bar clears it. */
+const WIN_MARGIN = 0.01
+
+/**
+ * How close is close enough, per level. A 15° click is the finest move there is, so the
+ * bar sits just under the best score the piece can reach one click off the solution: if
+ * turning a dial from there would barely change the shadow, then what's on the wall is as
+ * good as the eye can judge, and it counts. Where a click does visibly change the shadow
+ * that score is low, the floor takes over, and only the real thing will do.
+ *
+ * Floored at DEGENERATE_IOU and at `worst` (the best any orientation reached by chance
+ * scored) so no level can be won on a pose stumbled into, and capped at WIN_IOU so none
+ * ever asks for more precision than the eye can see.
+ */
+function winThreshold(sil: Silhouetter, geometry: BufferGeometry, solution: Quaternion, target: Mask, worst: number) {
+  let near = 0
+  for (const q of neighbours(solution)) {
+    near = Math.max(near, iou(sil.render(geometry, q, SCORE_RES), target))
+  }
+  return Math.min(WIN_IOU, Math.max(DEGENERATE_IOU, worst, near - WIN_MARGIN))
+}
+
 interface Attempt {
   score: number
+  /** Best IoU any wrong orientation reached, before the fill penalty. */
+  worst: number
   attempt: number
-  geometry: BufferGeometry
-  kinds: string[]
+  shape: GeneratedShape
   solution: Quaternion
   target: Mask
 }
@@ -96,7 +119,9 @@ interface Attempt {
 export function buildLevel(seed: string, sil: Silhouetter): Level {
   const difficulty = difficultyOf(seed)
 
-  const finish = ({ attempt, geometry, kinds, solution, target }: Attempt): Level => {
+  const finish = ({ attempt, shape, solution, target, worst }: Attempt): Level => {
+    const { geometry } = shape
+    const winIou = winThreshold(sil, geometry, solution, target, worst)
     const startRng = rngFor(`${seed}#${attempt}#start`)
     const starts = Array.from({ length: 8 }, () => {
       const walk = scramble(startRng, solution, 8 + 2 * difficulty)
@@ -105,13 +130,14 @@ export function buildLevel(seed: string, sil: Silhouetter): Level {
     const { q: start, moves } = starts.reduce((a, b) => (b.score < a.score ? b : a))
     const label = `FIG. ${100 + (hashString(seed) % 900)} · ${'★'.repeat(partsFor(difficulty))}`
     const targetTexture = maskTexture(sil.render(geometry, solution, TARGET_RES), TARGET_RES, label)
-    return { seed, difficulty, kinds, geometry, solution, start, scramble: moves, target, targetTexture }
+    return { seed, difficulty, ...shape, solution, start, scramble: moves, target, targetTexture, winIou }
   }
 
   let fallback: Attempt | undefined
   for (let attempt = 0; ; attempt++) {
     const rng = rngFor(`${seed}#${attempt}`)
-    const { geometry, kinds } = generateShape(rng, difficulty)
+    const shape = generateShape(rng, difficulty)
+    const { geometry } = shape
     const solution = randomQuaternion(rng)
     const target = sil.render(geometry, solution, SCORE_RES)
 
@@ -129,14 +155,14 @@ export function buildLevel(seed: string, sil: Silhouetter): Level {
     const fill = coverage(target)
 
     if (worst < DEGENERATE_IOU && fill > 0.1 && fill < 0.5) {
-      fallback?.geometry.dispose()
-      return finish({ score: worst, attempt, geometry, kinds, solution, target })
+      if (fallback) disposeShape(fallback.shape)
+      return finish({ score: worst, worst, attempt, shape, solution, target })
     }
     const score = worst + (fill > 0.1 && fill < 0.5 ? 0 : 1)
     if (!fallback || score < fallback.score) {
-      fallback?.geometry.dispose()
-      fallback = { score, attempt, geometry, kinds, solution, target }
-    } else geometry.dispose()
+      if (fallback) disposeShape(fallback.shape)
+      fallback = { score, worst, attempt, shape, solution, target }
+    } else disposeShape(shape)
     if (attempt === MAX_ATTEMPTS - 1) return finish(fallback)
   }
 }

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { WIN_IOU } from '../lib/constants'
 import { formatTime } from '../lib/stats'
 import { timeLimitFor, useGame } from '../state/store'
 import { Help } from './Help'
@@ -42,7 +41,9 @@ function MatchMeter() {
   const match = useGame((s) => s.match)
   const peak = useGame((s) => s.peak)
   const solved = useGame((s) => s.solved)
-  const n = Math.min(Math.max((match - 0.35) / (WIN_IOU - 0.35), 0), 1)
+  // the bar moves per level, so the meter fills exactly as the win lands
+  const win = useGame((s) => s.level?.winIou ?? 1)
+  const n = Math.min(Math.max((match - 0.35) / (win - 0.35), 0), 1)
   const lit = solved ? SEGMENTS : Math.floor(n * SEGMENTS)
   const color = solved ? '#f5c451' : `hsl(${210 - 165 * n} 85% ${60 + 10 * n}%)`
   // past 55% the whole meter starts to rumble, harder and faster the closer you get
@@ -206,7 +207,7 @@ export function HUD() {
       <footer className="flex flex-col items-center gap-3">
         <MatchMeter />
         <p className="text-center text-xs text-slate-500">
-          Fit the shadow into the outline · the dial clicks in 15° steps · running out of time spends a solve
+          Fit the shadow into the outline · each dial clicks in 15° steps · running out of time spends a solve
         </p>
       </footer>
     </div>

@@ -1,6 +1,7 @@
 import { Matrix4, Quaternion, Vector3, type BufferGeometry } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { SHAPE_RADIUS } from './constants'
+import { flourishFor, type Flourish } from './flourish'
 import { buildObject, isBase, MODEL_RADIUS, OBJECT_KINDS, type Solid } from './objects'
 import { range, type Rng } from './rng'
 
@@ -22,8 +23,24 @@ const DOWN = new Vector3(0, -1, 0)
 
 export interface GeneratedShape {
   geometry: BufferGeometry
-  /** Object kind per geometry group, for contextual materials. */
+  /** Object kind per model, in the order they were merged, for contextual materials. */
   kinds: string[]
+  /** The same models again, one geometry each, so they can move on their own once the puzzle is won. */
+  parts: ShapePart[]
+}
+
+export interface ShapePart {
+  kind: string
+  /** Centered on its pivot, so it turns in place; add the pivot back to put it where it belongs. */
+  geometry: BufferGeometry
+  pivot: Vector3
+  flourish: Flourish
+}
+
+/** Frees a shape and every model in it. */
+export function disposeShape(shape: GeneratedShape) {
+  shape.geometry.dispose()
+  for (const part of shape.parts) part.geometry.dispose()
 }
 
 /** A model in the scene. The floor is y = 0 and every part is upright unless leaning or stuck in. */
@@ -186,6 +203,13 @@ const yaw = (angle: number) => new Quaternion().setFromAxisAngle(UP, angle)
 /** Clear of every placed part when `part` starts this far from `from`. */
 const farFrom = (from: Vector3, part: Part, placed: Part[]) =>
   Math.max(...placed.map((p) => p.center.distanceTo(from) + p.radius)) + part.radius
+
+/** The model's longest axis, turned the way the part came to rest in the scene. */
+function sceneAxis(part: Part): Vector3 {
+  const size = part.solid.box.getSize(new Vector3()).toArray()
+  const k = size.indexOf(Math.max(...size))
+  return new Vector3(+(k === 0), +(k === 1), +(k === 2)).applyQuaternion(part.rotation)
+}
 
 /** The model's long horizontal axis, for things that lie down. */
 const longAxis = (solid: Solid) => {
@@ -363,14 +387,38 @@ export function generateShape(rng: Rng, difficulty: number): GeneratedShape {
     placed.push(part)
   }
 
-  const merged = mergeGeometries(parts.map((p) => p.solid.geometry), true)
-  parts.forEach((p) => p.solid.geometry.dispose())
+  // no groups: the merged copy exists for the silhouette, which draws it with one white material
+  const merged = mergeGeometries(parts.map((p) => p.solid.geometry))
   if (!merged) throw new Error('Failed to merge shape geometry')
 
-  merged.center()
+  merged.computeBoundingBox()
+  const shift = merged.boundingBox?.getCenter(new Vector3()).negate() ?? new Vector3()
+  merged.translate(shift.x, shift.y, shift.z)
   merged.computeBoundingSphere()
   const s = SHAPE_RADIUS / (merged.boundingSphere?.radius ?? 1)
   merged.scale(s, s, s)
   merged.computeBoundingSphere()
-  return { geometry: merged, kinds }
+
+  // every model gets the same centering and scaling, then sits on its own pivot
+  const models = parts.map((part, i) => {
+    const geometry = part.solid.geometry
+    geometry.translate(shift.x, shift.y, shift.z)
+    geometry.scale(s, s, s)
+    geometry.computeBoundingSphere()
+    geometry.computeBoundingBox()
+    const extent = geometry.boundingBox?.getSize(new Vector3()).toArray() ?? [0]
+    const pivot = geometry.boundingSphere?.center.clone() ?? new Vector3()
+    const context = {
+      kind: kinds[i],
+      solid: part.solid,
+      index: i,
+      radius: geometry.boundingSphere?.radius ?? 0,
+      thickness: Math.min(...extent) / 2,
+      along: sceneAxis(part),
+    }
+    geometry.translate(-pivot.x, -pivot.y, -pivot.z)
+    geometry.computeBoundingSphere()
+    return { kind: kinds[i], geometry, pivot, flourish: flourishFor(context) }
+  })
+  return { geometry: merged, kinds, parts: models }
 }

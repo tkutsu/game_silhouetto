@@ -26,7 +26,8 @@ export interface Solid {
 export type Role = 'base' | 'stack' | 'lean' | 'poke'
 
 /**
- * Low-poly CC0 models from Kenney's Food and Holiday kits (public/models/CREDITS.md).
+ * Low-poly CC0 models from Kenney's Food and Holiday kits (public/models/CREDITS.md), all of them
+ * food or kitchen things; the holiday kit only contributes its edible pieces.
  * Each kit colors its models from one small palette image.
  */
 const MODELS: Record<string, string[]> = {
@@ -48,15 +49,12 @@ const MODELS: Record<string, string[]> = {
     'whole-ham', 'wholer-ham', 'wine-red', 'wine-white',
   ],
   holiday: [
-    'bench-short', 'candy-cane-green', 'candy-cane-red', 'gingerbread-man', 'gingerbread-woman', 'lantern',
-    'nutcracker', 'present-a-cube', 'reindeer', 'sled', 'sled-long', 'snowman', 'train-locomotive',
-    'tree-decorated-snow', 'wreath-decorated',
+    'candy-cane-green', 'candy-cane-red', 'gingerbread-man', 'gingerbread-woman',
   ],
 }
 
 const BASES = new Set([
   'plate-dinner', 'pizza', 'pie', 'frying-pan', 'cutting-board-japanese', 'styrofoam-dinner', 'pan-stew',
-  'sled', 'sled-long', 'bench-short',
 ])
 const POKERS = new Set([
   'utensil-fork', 'utensil-knife', 'utensil-spoon', 'chopstic-decorative', 'skewer', 'skewer-vegetables',
@@ -74,7 +72,7 @@ export const OBJECT_KINDS = [...KIT_OF.keys()]
 
 /** Every model is scaled to this bounding-sphere radius before its real-size scale. */
 export const MODEL_RADIUS = 0.5
-/** Real-size scale bounds: a rice ball next to a Christmas tree would vanish. */
+/** Real-size scale bounds: a rice ball next to a turkey would vanish. */
 const SIZE_MIN = 0.6
 const SIZE_MAX = 1.5
 /** Inside tests use a voxel grid this many cells across the model's bounding box. */

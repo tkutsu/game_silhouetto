@@ -2,12 +2,12 @@ import { Canvas, useThree } from '@react-three/fiber'
 import { useEffect } from 'react'
 import { NeutralToneMapping, type PerspectiveCamera } from 'three'
 import { CAM_POS, CAM_TARGET, FRAME, LIGHT_Z } from '../lib/constants'
+import { Blueprints } from './Blueprints'
 import { LevelView } from './LevelView'
-import { Wall } from './Wall'
 
 const S = FRAME * 1.2
-const FOV = 42
-const MIN_ASPECT = 0.85
+const FOV = 36
+const MIN_ASPECT = 1
 
 /** Keeps the horizontal view wide enough on portrait screens. */
 function CameraRig() {
@@ -51,7 +51,7 @@ export function Scene() {
       </directionalLight>
       <directionalLight position={[-4, 6, 5]} intensity={2.4} color="#fff0db" />
       <directionalLight position={[3, 2.5, -6]} intensity={2.2} color="#9cc4ff" />
-      <Wall />
+      <Blueprints />
       <LevelView />
     </Canvas>
   )

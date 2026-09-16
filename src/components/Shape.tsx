@@ -1,58 +1,73 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
-import { Plane, Quaternion, Raycaster, Vector2, Vector3, type Mesh } from 'three'
-import { FRAME, SCORE_RES, SPRING_DAMP, SPRING_K, STEP, WALL_Z, WIN_IOU } from '../lib/constants'
+import { Quaternion, Raycaster, Vector2, Vector3, type Group, type Mesh } from 'three'
+import { SCORE_RES, SPRING_DAMP, SPRING_K, STEP } from '../lib/constants'
+import { DIAL_RING, dialAt, DIALS, project, ringPoint } from '../lib/dials'
+import { flourishAt, FLOURISH_DELAY_SEC, FLOURISH_STAGGER_SEC } from '../lib/flourish'
 import { AXES, type Level, type Move } from '../lib/level'
 import { partMaterials } from '../lib/materials'
 import { iou, type Silhouetter } from '../lib/silhouette'
 import * as sound from '../lib/sound'
-import { searchMoves } from '../lib/solver'
-import { useGame } from '../state/store'
+import { retrace, searchMoves } from '../lib/solver'
+import { dials, useGame } from '../state/store'
 
-const PX_PER_RADIAN = 125
 const WHEEL_PER_RADIAN = 500
+/** Floor on a dial's drag scale, in CSS px per radian, for rings seen nearly edge-on. */
+const MIN_PX_PER_RADIAN = 60
+/** Grabs this close to a ring's centre pull along the knob's direction instead of their own. */
+const CENTRE_GRAB = DIAL_RING * 0.35
+/**
+ * How far off the ring (as a fraction of its radius) the pointer still circles the dial:
+ * fully within ON_RING, fading out by OFF_RING, past which a drag is a straight pull.
+ */
+const ON_RING = 0.35
+const OFF_RING = 0.6
 /** A step commits this far into the drag, so the snap kicks in early. */
 const TRIGGER = 0.55
-const SNAP_ANGLE = 0.5
+/**
+ * On a win this close the piece settles onto the exact solution, so the shadow lands dead
+ * on the outline for the celebration. Wide enough for the few clicks a level's threshold
+ * can accept, narrow enough that winning on a mirrored second solution doesn't spin it.
+ */
+const SNAP_ANGLE = 0.8
 const SCORE_MS = 100
 const SQUASH = 0.055
 /** Gap between moves when the Solve button plays them back. */
 const AUTO_MS = 190
-/** How fast the Solve button glides when no step path fits: the playback speed. */
-const SOLVE_RATE = STEP / (AUTO_MS / 1000)
-/** Wall drags inside this radius act as a dial; past the dashed ring they're inert. */
-const DIAL_OUTER = FRAME * 1.05
-/** The dashed ring's radius: the dial tracks the finger 1:1 there and slows toward
- * the centre, where a raw angle would spin wildly on tiny movements. */
-const DIAL_RING = FRAME * 0.94
 
-const [X, Y, Z] = AXES
+const [X, Y] = AXES
 const wobbleQ = new Quaternion()
 const wobbleQ2 = new Quaternion()
+const noteQ = new Quaternion()
+const noteOffset = new Vector3()
 const stepQ = new Quaternion()
 const errQ = new Quaternion()
 const springAxis = new Vector3()
-const effScratch = new Quaternion()
-const rollQ = new Quaternion()
-const solveAxis = new Vector3()
-
-/** The piece as the blueprint sees it: rolling the blueprint counter-rotates the shadow relative to the outline. */
-const effective = (q: Quaternion, roll: number) =>
-  effScratch.copy(q).premultiply(rollQ.setFromAxisAngle(Z, -roll))
 
 const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
 
 interface PointerState {
   x: number
   y: number
-  dial: boolean
+  /** The grabbed dial's index; null for a second finger, which twists the roll. */
+  dial: number | null
+  /** Screen direction (unit, CSS px) a straight pull turns the dial forward along. */
+  dx: number
+  dy: number
+  /** CSS px of pull along that direction per radian of turn. */
+  scale: number
+  /** The pointer's angle around the grabbed dial; NaN when its ray misses the dial's plane. */
   angle: number
+  /** Smoothed pointer motion in CSS px, so one jittery event can't swing the pull direction. */
+  mx: number
+  my: number
 }
 
 export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
   const gl = useThree((state) => state.gl)
   const camera = useThree((state) => state.camera)
-  const mesh = useRef<Mesh>(null)
+  const group = useRef<Group>(null)
+  const models = useRef<(Mesh | null)[]>([])
   const materials = useMemo(() => partMaterials(level.kinds, gl), [level, gl])
   const s = useRef({
     /** Logical orientation, always exactly on the step grid. */
@@ -65,30 +80,24 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
     dirty: true,
     wobble: 1,
     lastScore: 0,
+    /** When the win landed, for the flourish; 0 until then. */
+    solvedAt: 0,
+    /** The player's piece turns, so Solve can always retrace the way back. */
+    history: [] as Move[],
     /** Remaining moves while the Solve button plays; null until it's pressed. */
     plan: null as Move[] | null,
     nextMove: 0,
   }).current
 
-  const commit = (axis: Vector3, dir: number) => {
-    // Z steps turn the blueprint (grid, outline and dial), not the piece
-    if (axis === Z) {
-      useGame.getState().rollBy(dir * STEP)
-    } else {
-      s.q.premultiply(stepQ.setFromAxisAngle(axis, dir * STEP)).normalize()
-      s.squash = 1
-    }
+  /** One 15° click of dial `i`, turning the piece about its axis. */
+  const commit = (i: number, dir: number) => {
+    dials.springs[i].target += dir * STEP
+    s.q.premultiply(stepQ.setFromAxisAngle(AXES[i], dir * STEP)).normalize()
+    s.history.push({ axis: AXES[i], dir })
+    s.squash = 1
     s.dirty = true
     if (!useGame.getState().muted) sound.clunk()
     navigator.vibrate?.(10)
-  }
-
-  /** Freeform turn for the piece itself: no grid, no clunk, tracks the finger directly. */
-  const rotate = (axis: Vector3, angle: number) => {
-    s.q.premultiply(stepQ.setFromAxisAngle(axis, angle)).normalize()
-    s.shown.copy(s.q)
-    s.spin.set(0, 0, 0)
-    s.dirty = true
   }
 
   useEffect(() => {
@@ -96,15 +105,15 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
     const pointers = new Map<number, PointerState>()
     const raycaster = new Raycaster()
     const ndc = new Vector2()
-    const hitPoint = new Vector3()
-    const wallPlane = new Plane(Z, -WALL_Z)
-    // pending roll in radians; a step commits once TRIGGER of it is dragged
-    const acc = { roll: 0 }
+    const a = new Vector3()
+    const b = new Vector3()
+    // pending turn per dial in radians; a step commits once TRIGGER of it is dragged
+    const acc = [0, 0, 0]
 
-    const drainRoll = () => {
-      while (Math.abs(acc.roll) >= STEP * TRIGGER) {
-        commit(Z, Math.sign(acc.roll))
-        acc.roll -= Math.sign(acc.roll) * STEP
+    const drain = (i: number) => {
+      while (Math.abs(acc[i]) >= STEP * TRIGGER) {
+        commit(i, Math.sign(acc[i]))
+        acc[i] -= Math.sign(acc[i]) * STEP
       }
     }
 
@@ -112,17 +121,23 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
       const r = el.getBoundingClientRect()
       ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -(((e.clientY - r.top) / r.height) * 2 - 1))
       raycaster.setFromCamera(ndc, camera)
+      return raycaster.ray
     }
-    const onShape = (e: PointerEvent) => {
-      cast(e)
-      return mesh.current ? raycaster.intersectObject(mesh.current, false).length > 0 : false
+
+    /** A world point in CSS px relative to the canvas. */
+    const toScreen = (p: Vector3) => {
+      const r = el.getBoundingClientRect()
+      p.project(camera)
+      return p.set(((p.x + 1) / 2) * r.width, ((1 - p.y) / 2) * r.height, 0)
     }
-    /** Angle and radius around the shadow's centre on the wall, or null when off the dial. */
-    const dialHit = (e: PointerEvent): { angle: number; r: number } | null => {
-      cast(e)
-      if (!raycaster.ray.intersectPlane(wallPlane, hitPoint)) return null
-      const r = Math.hypot(hitPoint.x, hitPoint.y)
-      return r <= DIAL_OUTER ? { angle: Math.atan2(hitPoint.y, hitPoint.x), r } : null
+
+    /** The ring's on-screen tangent at `angle`: forward direction and CSS px per radian, 1:1 with the knob. */
+    const tangent = (i: number, angle: number) => {
+      const eps = 0.01
+      toScreen(ringPoint(i, angle, a))
+      toScreen(ringPoint(i, angle + eps, b)).sub(a).divideScalar(eps)
+      const len = b.length() || 1
+      return { dx: b.x / len, dy: b.y / len, scale: Math.max(len, MIN_PX_PER_RADIAN) }
     }
 
     const active = () => {
@@ -135,48 +150,79 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
 
     const down = (e: PointerEvent) => {
       if (!active()) return
-      const shape = onShape(e)
-      const hit = shape ? null : dialHit(e)
-      // grab only the piece or the dial; a second finger may land anywhere (twist gesture)
-      if (pointers.size === 0 && !shape && hit === null) return
+      const hit = dialAt(cast(e))
+      // grab only a dial; a second finger may land anywhere (twist gesture)
+      if (pointers.size === 0 && hit === null) return
       el.setPointerCapture(e.pointerId)
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, dial: hit !== null, angle: hit?.angle ?? 0 })
-      if (pointers.size === 1) acc.roll = 0
+      const dir = hit
+        ? tangent(hit.i, hit.r > CENTRE_GRAB ? hit.angle : DIALS[hit.i].knob + dials.springs[hit.i].target)
+        : { dx: 0, dy: 0, scale: 1 }
+      pointers.set(e.pointerId, {
+        x: e.clientX,
+        y: e.clientY,
+        dial: hit?.i ?? null,
+        ...dir,
+        angle: hit?.angle ?? Number.NaN,
+        mx: 0,
+        my: 0,
+      })
+      if (pointers.size === 1) acc.fill(0)
+      dials.hot = hit?.i ?? dials.hot
       el.style.cursor = 'grabbing'
+    }
+
+    /**
+     * Circling on the ring turns the dial with the pointer's angle around it. Off the ring
+     * the drag is a straight pull, forward being the way the pointer last moved around the
+     * dial: a wide circle keeps steering it, while a yank soon heads away from the centre,
+     * which freezes it, so the dial keeps turning without having to circle.
+     */
+    const drag = (p: PointerState, i: number, e: PointerEvent) => {
+      const mx = e.clientX - p.x
+      const my = e.clientY - p.y
+      const straight = (mx * p.dx + my * p.dy) / p.scale
+      const hit = project(cast(e), i)
+      const off = hit ? Math.abs(hit.r / DIAL_RING - 1) : Infinity
+      const w = Math.min(1, Math.max(0, (OFF_RING - off) / (OFF_RING - ON_RING)))
+      const circle = hit && !Number.isNaN(p.angle) ? wrapAngle(hit.angle - p.angle) : straight
+      acc[i] += w * circle + (1 - w) * straight
+      p.angle = hit?.angle ?? Number.NaN
+
+      p.mx += (mx - p.mx) * 0.5
+      p.my += (my - p.my) * 0.5
+      const len = Math.hypot(p.mx, p.my)
+      if (hit && len > 0) {
+        const t = tangent(i, hit.angle)
+        const along = (p.mx * t.dx + p.my * t.dy) / len
+        // motion toward or away from the centre says nothing about which way is forward
+        if (Math.abs(along) > 0.5) {
+          p.dx = (Math.sign(along) * p.mx) / len
+          p.dy = (Math.sign(along) * p.my) / len
+          p.scale = t.scale
+        }
+      }
+      drain(i)
     }
 
     const move = (e: PointerEvent) => {
       if (pointers.size === 0) {
-        const solved = useGame.getState().solved
-        el.style.cursor = !solved && (onShape(e) || dialHit(e) !== null) ? 'grab' : 'default'
+        const hit = useGame.getState().solved ? null : dialAt(cast(e))
+        dials.hot = hit?.i ?? -1
+        el.style.cursor = hit ? 'grab' : 'default'
         return
       }
       const prev = pointers.get(e.pointerId)
       if (!prev || !active()) return
 
       if (pointers.size === 1) {
-        if (prev.dial) {
-          const hit = dialHit(e)
-          if (hit === null) {
-            // off the dial: re-anchor on re-entry instead of applying the jump
-            prev.angle = Number.NaN
-          } else {
-            if (!Number.isNaN(prev.angle)) acc.roll += wrapAngle(hit.angle - prev.angle) * Math.min(1, hit.r / DIAL_RING)
-            prev.angle = hit.angle
-            drainRoll()
-          }
-        } else {
-          // turntable: horizontal drag yaws, vertical drag pitches; roll lives on the shadow dial
-          rotate(Y, (e.clientX - prev.x) / PX_PER_RADIAN)
-          rotate(X, (e.clientY - prev.y) / PX_PER_RADIAN)
-        }
+        if (prev.dial !== null) drag(prev, prev.dial, e)
       } else {
         const other = [...pointers].find(([id]) => id !== e.pointerId)?.[1]
         if (other) {
           const before = Math.atan2(prev.y - other.y, prev.x - other.x)
           const after = Math.atan2(e.clientY - other.y, e.clientX - other.x)
-          acc.roll -= wrapAngle(after - before)
-          drainRoll()
+          acc[2] -= wrapAngle(after - before)
+          drain(2)
         }
       }
 
@@ -187,34 +233,33 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
     const up = (e: PointerEvent) => {
       pointers.delete(e.pointerId)
       if (pointers.size > 0) return
+      dials.hot = -1
       el.style.cursor = 'default'
     }
 
     const wheel = (e: WheelEvent) => {
       e.preventDefault()
       if (active()) {
-        acc.roll -= e.deltaY / WHEEL_PER_RADIAN
-        drainRoll()
+        acc[2] -= e.deltaY / WHEEL_PER_RADIAN
+        drain(2)
       }
     }
 
-    const keys: Record<string, [Vector3, number]> = {
-      ArrowLeft: [Y, -1],
-      ArrowRight: [Y, 1],
-      ArrowUp: [X, -1],
-      ArrowDown: [X, 1],
-      KeyQ: [Z, 1],
-      KeyE: [Z, -1],
+    // [dial, direction]
+    const keys: Record<string, [number, number]> = {
+      ArrowLeft: [1, -1],
+      ArrowRight: [1, 1],
+      ArrowUp: [0, -1],
+      ArrowDown: [0, 1],
+      KeyQ: [2, 1],
+      KeyE: [2, -1],
     }
     const key = (e: KeyboardEvent) => {
       const k = keys[e.code]
       if (!k) return
       e.preventDefault()
       if (!active()) return
-      const [axis, dir] = k
-      // only the shadow's roll is stepped; arrows nudge the piece freely (hold to keep turning)
-      if (axis === Z) commit(axis, dir)
-      else rotate(axis, (dir * STEP) / 3)
+      commit(k[0], k[1])
     }
 
     el.addEventListener('pointerdown', down)
@@ -238,47 +283,44 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
     const now = performance.now()
 
     if (game.solved) {
-      // the physical pose whose shadow lands on the (rolled) outline
-      s.q.copy(level.solution).premultiply(rollQ.setFromAxisAngle(Z, game.roll))
+      s.q.copy(level.solution)
       if (s.snap) s.shown.slerp(s.q, 1 - Math.exp(-dt * 6))
       s.spin.set(0, 0, 0)
       if (s.wobble > 0) s.wobble = 0
+
+      // once the shadow has settled on the outline, each model takes its bow in turn
+      if (!s.solvedAt) s.solvedAt = now
+      const since = (now - s.solvedAt) / 1000 - FLOURISH_DELAY_SEC
+      level.parts.forEach((part, i) => {
+        const model = models.current[i]
+        if (!model) return
+        flourishAt(part.flourish, since - i * FLOURISH_STAGGER_SEC, noteOffset, noteQ)
+        model.position.copy(part.pivot).add(noteOffset)
+        model.quaternion.copy(noteQ)
+      })
     } else {
       if (game.startedAt !== null && s.wobble > 0) s.wobble = Math.max(0, s.wobble - dt * 2)
 
       if (game.autoSolving) {
-        // stepped playback when a short path exists; the piece is freeform now, so when
-        // none does (or the path lands shy of the win) glide the rest of the way
         if (s.plan === null) {
-          const wins = (q: Quaternion) => iou(sil.render(level.geometry, q, SCORE_RES), level.target) >= WIN_IOU
-          s.plan = searchMoves(effective(s.q, game.roll), level.solution, wins) ?? []
+          const wins = (q: Quaternion) => iou(sil.render(level.geometry, q, SCORE_RES), level.target) >= level.winIou
+          s.plan = searchMoves(s.q, level.solution, wins) ?? retrace(level.scramble, s.history)
         }
-        if (s.plan.length > 0) {
-          if (now >= s.nextMove) {
-            const next = s.plan.shift()
-            // the plan lives in blueprint space: a Z step there is a counter-roll of the
-            // blueprint, and pitch/yaw steps happen about the blueprint's rolled axes
-            if (next && next.axis === Z) commit(Z, -next.dir)
-            else if (next) commit(solveAxis.copy(next.axis).applyAxisAngle(Z, game.roll), next.dir)
-            s.nextMove = now + AUTO_MS
-          }
-        } else {
-          s.q.rotateTowards(
-            effScratch.copy(level.solution).premultiply(rollQ.setFromAxisAngle(Z, game.roll)),
-            SOLVE_RATE * dt,
-          )
-          s.dirty = true
+        const next = now >= s.nextMove ? s.plan.shift() : undefined
+        if (next) {
+          commit(AXES.indexOf(next.axis), next.dir)
+          s.nextMove = now + AUTO_MS
         }
       }
 
       // the win fires the instant the threshold is crossed, mid-drag included
       if (s.dirty && now - s.lastScore > SCORE_MS) {
-        const match = iou(sil.render(level.geometry, effective(s.q, game.roll), SCORE_RES), level.target)
+        const match = iou(sil.render(level.geometry, s.q, SCORE_RES), level.target)
         s.dirty = false
         s.lastScore = now
         game.setMatch(match)
-        if (match >= WIN_IOU && game.startedAt !== null) {
-          s.snap = effective(s.q, game.roll).angleTo(level.solution) < SNAP_ANGLE
+        if (match >= level.winIou && game.startedAt !== null) {
+          s.snap = s.q.angleTo(level.solution) < SNAP_ANGLE
           game.solve(match)
         }
       }
@@ -302,7 +344,7 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
 
     s.squash = Math.max(0, s.squash - dt * 6)
 
-    const m = mesh.current
+    const m = group.current
     if (!m) return
     m.quaternion.copy(s.shown)
     m.scale.setScalar(game.solved ? 1 : 1 - SQUASH * s.squash)
@@ -316,5 +358,20 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
     }
   })
 
-  return <mesh ref={mesh} geometry={level.geometry} material={materials} castShadow />
+  return (
+    <group ref={group}>
+      {level.parts.map((part, i) => (
+        <mesh
+          key={i}
+          ref={(model) => {
+            models.current[i] = model
+          }}
+          geometry={part.geometry}
+          material={materials[i]}
+          position={part.pivot}
+          castShadow
+        />
+      ))}
+    </group>
+  )
 }

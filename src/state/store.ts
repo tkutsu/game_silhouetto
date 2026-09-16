@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { disposeShape } from '../lib/generateShape'
 import type { Level } from '../lib/level'
 import * as sound from '../lib/sound'
 import { loadStats, saveStats } from '../lib/stats'
@@ -35,10 +36,7 @@ interface GameState {
   solvedCount: number
   sessionOver: boolean
   muted: boolean
-  /** Net roll applied this puzzle, in radians; the dial ring on the wall follows it. */
-  roll: number
   helpOpen: boolean
-  rollBy: (delta: number) => void
   openHelp: () => void
   closeHelp: () => void
   setLevel: (level: Level) => void
@@ -90,11 +88,14 @@ const shared = seedFromUrl()
 const stats = loadStats()
 
 /**
- * Visual spring toward `roll`, shared so the wall grid, target outline and dial
- * ring all turn as one blueprint. The wall updates it each frame; a new level
- * resets it.
+ * Visual state of the pitch, yaw and roll dials: each spring chases its committed turns,
+ * so a dial's ring and knob turn in step with the piece. The blueprints advance them each
+ * frame; a new level resets them. `hot` is the hovered or grabbed dial, -1 for none.
  */
-export const rollSpring = { angle: 0, vel: 0 }
+export const dials = {
+  hot: -1,
+  springs: [0, 1, 2].map(() => ({ target: 0, angle: 0, vel: 0 })),
+}
 
 export const useGame = create<GameState>((set, get) => ({
   seed: shared?.seed ?? seedFor(1),
@@ -114,10 +115,8 @@ export const useGame = create<GameState>((set, get) => ({
   solvedCount: 0,
   sessionOver: false,
   muted: localStorage.getItem(MUTE_KEY) === '1',
-  roll: 0,
   helpOpen: localStorage.getItem(HELP_KEY) !== '1',
 
-  rollBy: (delta) => set({ roll: get().roll + delta }),
   openHelp: () => set({ helpOpen: true }),
   closeHelp: () => {
     localStorage.setItem(HELP_KEY, '1')
@@ -127,7 +126,7 @@ export const useGame = create<GameState>((set, get) => ({
   setLevel: (level) => {
     const old = get().level
     if (old && old !== level) {
-      old.geometry.dispose()
+      disposeShape(old)
       old.targetTexture.dispose()
     }
     set({
@@ -139,7 +138,6 @@ export const useGame = create<GameState>((set, get) => ({
       time: null,
       timedOut: false,
       points: 0,
-      roll: 0,
       autoSolving: false,
     })
   },

@@ -70,7 +70,7 @@ export function iou(a: Mask, b: Mask): number {
 
 export const coverage = (mask: Mask) => mask.reduce((n, v) => n + v, 0) / mask.length
 
-/** Dashed dial ring with ticks and rotation arrows, on its own texture so it can spin with the roll. */
+/** Dashed dial ring with ticks and rotation arrows, on its own texture so it can spin with its dial. */
 export function dialTexture(res = 512): CanvasTexture {
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = res

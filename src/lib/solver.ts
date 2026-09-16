@@ -135,3 +135,17 @@ export function searchMoves(start: Quaternion, solution: Quaternion, wins: (q: Q
   }
   return null
 }
+
+/**
+ * The exact way back when no short path exists: undo the player's turns, then the
+ * scramble's, skipping pairs that cancel.
+ */
+export function retrace(scramble: Move[], history: Move[]): Move[] {
+  const path: Move[] = []
+  for (const { axis, dir } of [...scramble, ...history].reverse()) {
+    const last = path.at(-1)
+    if (last?.axis === axis && last.dir === dir) path.pop()
+    else path.push({ axis, dir: -dir })
+  }
+  return path
+}

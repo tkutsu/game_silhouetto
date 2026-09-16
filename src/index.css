@@ -54,28 +54,9 @@ body,
   }
 }
 
-/* Help-overlay demos: the piece tumbles freely; the shadow's turns land in clicks
-   with a slight overshoot, like the game. */
-.demo-tumble {
-  animation: demo-tumble 2.6s ease-in-out infinite alternate;
-}
+/* Help-overlay demos: each dial's turns land in clicks with a slight overshoot, like the game. */
 .demo-spin {
   animation: demo-spin-clicks 2.6s ease-in-out infinite alternate;
-}
-.demo-drag {
-  animation: demo-drag 2.6s ease-in-out infinite alternate;
-}
-.demo-orbit {
-  animation: demo-orbit 2.6s ease-in-out infinite alternate;
-}
-
-@keyframes demo-tumble {
-  from {
-    transform: perspective(220px) rotate3d(0.4, 1, 0, -34deg);
-  }
-  to {
-    transform: perspective(220px) rotate3d(0.4, 1, 0, 34deg);
-  }
 }
 
 @keyframes demo-spin-clicks {
@@ -96,23 +77,5 @@ body,
   70%,
   100% {
     transform: rotate(45deg);
-  }
-}
-
-@keyframes demo-drag {
-  from {
-    transform: translateX(-34px);
-  }
-  to {
-    transform: translateX(34px);
-  }
-}
-
-@keyframes demo-orbit {
-  from {
-    transform: rotate(-70deg);
-  }
-  to {
-    transform: rotate(70deg);
   }
 }

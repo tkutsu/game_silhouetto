@@ -46,7 +46,7 @@ function vivid(palette: Texture): Texture {
 
 const cache = new Map<Texture | null, MeshStandardMaterial>()
 
-/** One flat-colored material per geometry group, shared by every model of the same kit. Never disposed. */
+/** One flat-colored material per model, shared by every model of the same kit. Never disposed. */
 export function partMaterials(kinds: string[], gl: WebGLRenderer): MeshStandardMaterial[] {
   return kinds.map((kind) => {
     const palette = paletteFor(kind)
