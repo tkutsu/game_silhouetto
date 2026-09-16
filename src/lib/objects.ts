@@ -41,7 +41,7 @@ const MODELS: Record<string, string[]> = {
     'egg-cooked', 'eggplant', 'fish', 'fish-bones', 'frappe', 'fries', 'frikandel-speciaal', 'frying-pan',
     'ginger-bread', 'grapes', 'honey', 'hot-dog', 'ice-cream', 'knife-block', 'leek', 'lemon-half', 'loaf',
     'loaf-baguette', 'lollypop', 'meat-cooked', 'meat-tenderizer', 'mug', 'mushroom-half', 'onion-half',
-    'orange', 'pan-stew', 'pancakes', 'paprika', 'paprika-slice', 'peanut-butter', 'pear', 'pear-half', 'pie',
+    'orange', 'pan-stew', 'paprika', 'paprika-slice', 'peanut-butter', 'pear', 'pear-half', 'pie',
     'pineapple', 'pizza', 'plate-dinner', 'popsicle', 'popsicle-chocolate', 'pot-stew',
     'pumpkin', 'pumpkin-basic', 'radish', 'rice-ball', 'rollingPin', 'salad', 'sandwich', 'shaker-salt',
     'skewer', 'skewer-vegetables', 'soda-can', 'soda-glass', 'strawberry', 'styrofoam-dinner', 'sub', 'sundae',
