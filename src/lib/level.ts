@@ -1,8 +1,18 @@
-import { Quaternion, Vector3, type BufferGeometry, type CanvasTexture } from 'three'
-import { DEGENERATE_IOU, SCORE_RES, STEP, TARGET_RES, WIN_IOU } from './constants'
+import { Quaternion, type BufferGeometry, type CanvasTexture, type Vector3 } from 'three'
+import { AXES, BACK, DEGENERATE_IOU, SCORE_RES, STEP, TARGET_RES, WIN_IOU } from './constants'
 import { disposeShape, generateShape, partsFor, type GeneratedShape, type ShapePart } from './generateShape'
 import { hashString, randomQuaternion, rngFor, type Rng } from './rng'
 import { coverage, iou, maskTexture, type Mask, type Silhouetter } from './silhouette'
+
+/** One lit projection: the outline on a blueprint, and the shadow that has to land inside it. */
+export interface View {
+  /** The axis it looks down, which is also its blueprint and its dial. */
+  axis: number
+  target: Mask
+  texture: CanvasTexture
+  /** How close this projection has to fit to count, between DEGENERATE_IOU and WIN_IOU. */
+  winIou: number
+}
 
 export interface Level {
   seed: string
@@ -16,17 +26,26 @@ export interface Level {
   start: Quaternion
   /** Grid moves that took the solution to `start`, in order. */
   scramble: Move[]
-  /** How close this puzzle's shadow has to fit to count, between DEGENERATE_IOU and WIN_IOU. */
-  winIou: number
-  target: Mask
-  targetTexture: CanvasTexture
+  /** The projections in play, always including the back wall. All of them have to match. */
+  views: View[]
 }
+
+/**
+ * The projections lit at a difficulty. The first puzzles show all three, so the piece can be
+ * read off one blueprint at a time; then the side wall goes dark, then the floor, until only
+ * the back wall is left and its one shadow has to be found in all three axes at once.
+ */
+export function viewsFor(difficulty: number): number[] {
+  if (difficulty <= 2) return [0, 1, BACK]
+  if (difficulty <= 4) return [1, BACK]
+  return [BACK]
+}
+
+/** Drafting names for the three views, printed on each blueprint. */
+const VIEW_NAMES = ['SIDE', 'PLAN', 'FRONT']
 
 const PROBES = 24
 const MAX_ATTEMPTS = 20
-
-/** Pitch, yaw and roll: the normals of the side wall, floor and back wall blueprints. Roll is the light axis. */
-export const AXES = [new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, 1)]
 
 /** One grid step, premultiplied: `axis` is one of AXES. */
 export interface Move {
@@ -93,13 +112,28 @@ const WIN_MARGIN = 0.01
  * scored) so no level can be won on a pose stumbled into, and capped at WIN_IOU so none
  * ever asks for more precision than the eye can see.
  */
-function winThreshold(sil: Silhouetter, geometry: BufferGeometry, solution: Quaternion, target: Mask, worst: number) {
+function winThreshold(sil: Silhouetter, geometry: BufferGeometry, solution: Quaternion, view: View, worst: number) {
   let near = 0
   for (const q of neighbours(solution)) {
-    near = Math.max(near, iou(sil.render(geometry, q, SCORE_RES), target))
+    near = Math.max(near, iou(sil.render(geometry, q, SCORE_RES, view.axis), view.target))
   }
   return Math.min(WIN_IOU, Math.max(DEGENERATE_IOU, worst, near - WIN_MARGIN))
 }
+
+/** How well an orientation fits each lit outline. */
+export function scoreViews(sil: Silhouetter, geometry: BufferGeometry, q: Quaternion, views: View[]): number[] {
+  return views.map((view) => iou(sil.render(geometry, q, SCORE_RES, view.axis), view.target))
+}
+
+/** Every lit projection has to be close enough; the tightest one decides. */
+export const winsAll = (matches: number[], views: View[]) => matches.every((m, i) => m >= views[i].winIou)
+
+/** Where a projection starts reading as warm; below this the outline stays cold and the meter empty. */
+export const MATCH_FLOOR = 0.35
+
+/** One projection's share of the meter: 0 at the point it starts warming, 1 the moment it would count. */
+export const progressOf = (match: number, view: View) =>
+  Math.min(1, Math.max(0, (match - MATCH_FLOOR) / (view.winIou - MATCH_FLOOR)))
 
 interface Attempt {
   score: number
@@ -121,16 +155,30 @@ export function buildLevel(seed: string, sil: Silhouetter): Level {
 
   const finish = ({ attempt, shape, solution, target, worst }: Attempt): Level => {
     const { geometry } = shape
-    const winIou = winThreshold(sil, geometry, solution, target, worst)
+    const fig = `FIG. ${100 + (hashString(seed) % 900)}`
+    const stars = '★'.repeat(partsFor(difficulty))
+    const views = viewsFor(difficulty).map((axis): View => {
+      const mask = axis === BACK ? target : sil.render(geometry, solution, SCORE_RES, axis)
+      const label = `${fig} · ${VIEW_NAMES[axis]} · ${stars}`
+      const view: View = {
+        axis,
+        target: mask,
+        texture: maskTexture(sil.render(geometry, solution, TARGET_RES, axis), TARGET_RES, label),
+        winIou: 0,
+      }
+      // only the back wall was probed for lucky orientations; the others just have to beat a click
+      view.winIou = winThreshold(sil, geometry, solution, view, axis === BACK ? worst : 0)
+      return view
+    })
     const startRng = rngFor(`${seed}#${attempt}#start`)
     const starts = Array.from({ length: 8 }, () => {
       const walk = scramble(startRng, solution, 8 + 2 * difficulty)
-      return { ...walk, score: iou(sil.render(geometry, walk.q, SCORE_RES), target) }
+      const scores = scoreViews(sil, geometry, walk.q, views)
+      return { ...walk, score: scores.reduce((a, b) => a + b, 0) / scores.length }
     })
+    // the start that looks wrong on every lit blueprint at once
     const { q: start, moves } = starts.reduce((a, b) => (b.score < a.score ? b : a))
-    const label = `FIG. ${100 + (hashString(seed) % 900)} · ${'★'.repeat(partsFor(difficulty))}`
-    const targetTexture = maskTexture(sil.render(geometry, solution, TARGET_RES), TARGET_RES, label)
-    return { seed, difficulty, ...shape, solution, start, scramble: moves, target, targetTexture, winIou }
+    return { seed, difficulty, ...shape, solution, start, scramble: moves, views }
   }
 
   let fallback: Attempt | undefined

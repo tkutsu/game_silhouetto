@@ -1,12 +1,12 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import { Quaternion, Raycaster, Vector2, Vector3, type Group, type Mesh } from 'three'
-import { SCORE_RES, SPRING_DAMP, SPRING_K, STEP } from '../lib/constants'
+import { AXES, SPRING_DAMP, SPRING_K, STEP } from '../lib/constants'
 import { DIAL_RING, dialAt, DIALS, project, ringPoint } from '../lib/dials'
 import { flourishAt, FLOURISH_DELAY_SEC, FLOURISH_STAGGER_SEC } from '../lib/flourish'
-import { AXES, type Level, type Move } from '../lib/level'
+import { scoreViews, winsAll, type Level, type Move } from '../lib/level'
 import { partMaterials } from '../lib/materials'
-import { iou, type Silhouetter } from '../lib/silhouette'
+import { type Silhouetter } from '../lib/silhouette'
 import * as sound from '../lib/sound'
 import { solveFrom } from '../lib/solver'
 import { dials, useGame } from '../state/store'
@@ -292,7 +292,7 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
 
       if (game.autoSolving) {
         if (s.plan === null) {
-          const wins = (q: Quaternion) => iou(sil.render(level.geometry, q, SCORE_RES), level.target) >= level.winIou
+          const wins = (q: Quaternion) => winsAll(scoreViews(sil, level.geometry, q, level.views), level.views)
           s.plan = solveFrom(s.q, level.solution, wins, level.scramble, s.history)
         }
         const next = now >= s.nextMove ? s.plan.shift() : undefined
@@ -302,15 +302,15 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
         }
       }
 
-      // the win fires the instant the threshold is crossed, mid-drag included
+      // the win fires the instant every lit projection is close enough, mid-drag included
       if (s.dirty && now - s.lastScore > SCORE_MS) {
-        const match = iou(sil.render(level.geometry, s.q, SCORE_RES), level.target)
+        const matches = scoreViews(sil, level.geometry, s.q, level.views)
         s.dirty = false
         s.lastScore = now
-        game.setMatch(match)
-        if (match >= level.winIou && game.startedAt !== null) {
+        game.setMatch(matches)
+        if (winsAll(matches, level.views) && game.startedAt !== null) {
           s.snap = s.q.angleTo(level.solution) < SNAP_ANGLE
-          game.solve(match)
+          game.solve(Math.min(...matches))
         }
       }
 
@@ -345,6 +345,13 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
         .multiply(wobbleQ2.setFromAxisAngle(X, Math.sin(t * 0.7 + 1) * 0.07 * s.wobble))
       m.quaternion.premultiply(wobbleQ)
     }
+
+    /**
+     * Redraw every lit shadow from the piece exactly as it is seen, overshoot and wobble
+     * included. The merged geometry stands in for the models, so once the win sends them
+     * off on their flourish the shadows stay put, landed on their outlines.
+     */
+    for (const view of level.views) sil.cast(level.geometry, m.quaternion, view.axis)
   })
 
   return (
@@ -358,7 +365,6 @@ export function Shape({ level, sil }: { level: Level; sil: Silhouetter }) {
           geometry={part.geometry}
           material={materials[i]}
           position={part.pivot}
-          castShadow
         />
       ))}
     </group>

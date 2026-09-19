@@ -1,3 +1,5 @@
+import { Vector3 } from 'three'
+
 /** Half-size of the orthographic frame shared by the shadow camera, target overlay and scoring. */
 export const FRAME = 1.6
 export const SHAPE_RADIUS = 1.3
@@ -7,8 +9,18 @@ export const FLOOR_Y = -2.1
 export const SIDE_X = -2.3
 export const LIGHT_Z = 10
 
+/**
+ * Pitch, yaw and roll: the normals of the side wall, floor and back wall blueprints, and
+ * the three directions a shadow is cast along. Every mask, outline and dial is indexed by them.
+ */
+export const AXES = [new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, 1)]
+/** The back wall, where the shadow falls at every difficulty. */
+export const BACK = 2
+
 export const SCORE_RES = 128
 export const TARGET_RES = 1024
+/** Resolution of the cast shadows; they sit right beside the outline, so they have to be as crisp. */
+export const SHADOW_RES = 1024
 
 /** The strictest a level's win threshold ever gets: a fit this good always counts. */
 export const WIN_IOU = 0.9

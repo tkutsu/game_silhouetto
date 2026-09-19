@@ -12,48 +12,87 @@ import {
   type BufferGeometry,
   type WebGLRenderer,
 } from 'three'
-import { FRAME, LIGHT_Z } from './constants'
+import { AXES, BACK, FRAME, LIGHT_Z, SHADOW_RES } from './constants'
 
 export type Mask = Uint8Array
 
-/** Renders a geometry's orthographic silhouette along -Z, matching the shadow light's projection. */
+/**
+ * Looks down axis `i` from the light on that side, framing the scoring window. Its local
+ * right and up are the blueprint's, so a mask, its outline and the cast shadow all line up.
+ */
+export function viewCamera(i: number): OrthographicCamera {
+  const camera = new OrthographicCamera(-FRAME, FRAME, FRAME, -FRAME, 0.1, LIGHT_Z * 2)
+  camera.position.copy(AXES[i]).multiplyScalar(LIGHT_Z)
+  camera.up.copy(AXES[(i + 2) % 3])
+  camera.lookAt(0, 0, 0)
+  return camera
+}
+
+/**
+ * Renders a geometry's orthographic silhouette along any of the three axes: small masks to
+ * score against, and full-size white-on-black renders the blueprints wear as their shadows.
+ */
 export class Silhouetter {
   private scene = new Scene()
-  private camera = new OrthographicCamera(-FRAME, FRAME, FRAME, -FRAME, 0.1, LIGHT_Z * 2)
+  private cameras = [0, 1, 2].map(viewCamera)
   private mesh = new Mesh(undefined, new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide }))
   private targets = new Map<number, { rt: WebGLRenderTarget; buf: Uint8Array }>()
+  private shadows = new Map<number, WebGLRenderTarget>()
   private gl: WebGLRenderer
 
   constructor(gl: WebGLRenderer) {
     this.gl = gl
     this.scene.background = new Color(0x000000)
-    this.camera.position.set(0, 0, LIGHT_Z)
     this.scene.add(this.mesh)
   }
 
-  render(geometry: BufferGeometry, quaternion: Quaternion, res: number): Mask {
+  render(geometry: BufferGeometry, quaternion: Quaternion, res: number, view = BACK): Mask {
     let target = this.targets.get(res)
     if (!target) {
       target = { rt: new WebGLRenderTarget(res, res), buf: new Uint8Array(res * res * 4) }
       this.targets.set(res, target)
     }
-    this.mesh.geometry = geometry
-    this.mesh.quaternion.copy(quaternion)
-
-    const prev = this.gl.getRenderTarget()
-    this.gl.setRenderTarget(target.rt)
-    this.gl.render(this.scene, this.camera)
+    this.draw(geometry, quaternion, view, target.rt)
     this.gl.readRenderTargetPixels(target.rt, 0, 0, res, res, target.buf)
-    this.gl.setRenderTarget(prev)
 
     const mask = new Uint8Array(res * res)
     for (let i = 0; i < mask.length; i++) mask[i] = target.buf[i * 4] > 127 ? 1 : 0
     return mask
   }
 
+  /**
+   * Redraws the shadow one blueprint wears. Nothing is read back: the render target is the
+   * texture, so the shadow is the very projection that gets scored, with no shadow map to blur it.
+   */
+  cast(geometry: BufferGeometry, quaternion: Quaternion, view: number) {
+    this.draw(geometry, quaternion, view, this.shadow(view))
+  }
+
+  /** The shadow cast along axis `view`, white on black, for use as an alpha map. */
+  shadow(view: number): WebGLRenderTarget {
+    let rt = this.shadows.get(view)
+    if (!rt) {
+      // multisampled: these are seen at full size, and a stepped edge would read as a jagged shadow
+      rt = new WebGLRenderTarget(SHADOW_RES, SHADOW_RES, { samples: 4 })
+      this.shadows.set(view, rt)
+    }
+    return rt
+  }
+
+  private draw(geometry: BufferGeometry, quaternion: Quaternion, view: number, rt: WebGLRenderTarget) {
+    this.mesh.geometry = geometry
+    this.mesh.quaternion.copy(quaternion)
+    const prev = this.gl.getRenderTarget()
+    this.gl.setRenderTarget(rt)
+    this.gl.render(this.scene, this.cameras[view])
+    this.gl.setRenderTarget(prev)
+  }
+
   dispose() {
     this.targets.forEach(({ rt }) => rt.dispose())
+    this.shadows.forEach((rt) => rt.dispose())
     this.targets.clear()
+    this.shadows.clear()
     this.mesh.material.dispose()
   }
 }

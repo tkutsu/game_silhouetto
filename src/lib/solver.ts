@@ -1,6 +1,6 @@
 import { Quaternion } from 'three'
-import { STEP } from './constants'
-import { AXES, type Move } from './level'
+import { AXES, STEP } from './constants'
+import { type Move } from './level'
 
 /** Each half of the meet-in-the-middle search looks this many steps out, so paths up to twice this are found. */
 const DEPTH = 6

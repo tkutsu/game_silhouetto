@@ -1,10 +1,10 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import { CanvasTexture, SRGBColorSpace, type Group, type Mesh, type Texture } from 'three'
-import { FRAME, SPRING_DAMP, SPRING_K, WALL_Z } from '../lib/constants'
+import { FRAME, SPRING_DAMP, SPRING_K } from '../lib/constants'
 import { DIAL_RING, DIALS } from '../lib/dials'
 import { dialTexture } from '../lib/silhouette'
-import { dials } from '../state/store'
+import { dials, useGame } from '../state/store'
 
 const W = 2048
 // larger than the view in every direction, so no edge ever shows
@@ -51,8 +51,11 @@ function blueprint() {
 
 const KNOB_HOT = 1.35
 
+/** How far an unlit blueprint fades back, so the ones in play lead. */
+const DARK = ['#7d8fa6', '#6a7d93', '#ffffff']
+
 /** One blueprint with its dial: the dashed ring and knob turn with the dial's spring, the grid stays still. */
-function Blueprint({ index, map, ring }: { index: number; map: Texture; ring: Texture }) {
+function Blueprint({ index, map, ring, lit }: { index: number; map: Texture; ring: Texture; lit: boolean }) {
   const { center, frame, knob } = DIALS[index]
   const spin = useRef<Group>(null)
   const puck = useRef<Mesh>(null)
@@ -71,8 +74,8 @@ function Blueprint({ index, map, ring }: { index: number; map: Texture; ring: Te
     <group position={center} quaternion={frame}>
       <mesh>
         <planeGeometry args={[WORLD, WORLD]} />
-        {/* the floor and side wall sit dimmer so the back wall, where the shadow lands, leads */}
-        <meshBasicMaterial map={map} color={['#a3b4c8', '#7f93aa', '#ffffff'][index]} />
+        {/* a blueprint with no shadow on it is only scenery, and sits back */}
+        <meshBasicMaterial map={map} color={lit ? '#ffffff' : DARK[index]} />
       </mesh>
       {/* only the dial turns; the blueprint under it stays put */}
       <group ref={spin}>
@@ -92,8 +95,7 @@ function Blueprint({ index, map, ring }: { index: number; map: Texture; ring: Te
 /**
  * The drafting corner: side wall, floor and back wall blueprints, one per rotation axis.
  * They ignore scene lights so the shape can be lit dramatically without washing out the
- * shadow; only the back wall catches it, through a ShadowMaterial layer that darkens
- * where the shape blocks the light.
+ * shadows, which LevelView lays over the ones the level lights up.
  */
 export function Blueprints() {
   const gl = useThree((s) => s.gl)
@@ -104,16 +106,13 @@ export function Blueprints() {
   }, [gl])
   const ring = useMemo(() => dialTexture(), [])
   useEffect(() => () => ring.dispose(), [ring])
+  const views = useGame((s) => s.level?.views)
 
   return (
     <>
       {DIALS.map((_, i) => (
-        <Blueprint key={i} index={i} map={map} ring={ring} />
+        <Blueprint key={i} index={i} map={map} ring={ring} lit={!!views?.some((v) => v.axis === i)} />
       ))}
-      <mesh position={[0, 0, WALL_Z + 0.002]} receiveShadow>
-        <planeGeometry args={[WORLD, WORLD]} />
-        <shadowMaterial color="#010611" opacity={0.6} transparent depthWrite={false} />
-      </mesh>
     </>
   )
 }

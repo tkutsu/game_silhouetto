@@ -24,10 +24,12 @@ export function Help() {
         <p className="text-xs tracking-widest text-amber-400 uppercase">How to play</p>
         <DialDemo />
         <p className="text-base leading-relaxed text-slate-200">
-          Each of the 3 dials turns the object on a different axis. Fit its shadow into the outline on the blueprint.
+          Each of the 3 dials turns the object on a different axis. Fit every shadow it casts into the outline on that
+          blueprint.
         </p>
         <p className="mt-4 text-xs leading-relaxed text-slate-400">
-          Dials click in 15° steps. Use two fingers to turn two at once. Running out of time spends a Solve.
+          Later levels light fewer blueprints, until only the back wall is left. Dials click in 15° steps. Running
+          out of time spends a Solve.
         </p>
         <button
           className="mt-6 w-full rounded-full bg-amber-400 py-2.5 font-medium text-slate-900 hover:bg-amber-300"

@@ -1,36 +1,75 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import type { MeshBasicMaterial } from 'three'
-import { FRAME, WALL_Z } from '../lib/constants'
-import { buildLevel } from '../lib/level'
+import { FRAME } from '../lib/constants'
+import { DIALS } from '../lib/dials'
+import { buildLevel, progressOf, type View } from '../lib/level'
 import { loadObjects } from '../lib/objects'
 import { Silhouetter } from '../lib/silhouette'
 import { dials, useGame } from '../state/store'
 import { Shape } from './Shape'
 
-export function LevelView() {
-  const gl = useThree((s) => s.gl)
-  const seed = useGame((s) => s.seed)
-  const level = useGame((s) => s.level)
-  const sil = useMemo(() => new Silhouetter(gl), [gl])
-  const overlay = useRef<MeshBasicMaterial>(null)
+/** Lifted off its blueprint in this order: grid, outline, shadow over both. */
+const OUTLINE_Z = 0.001
+const SHADOW_Z = 0.002
 
-  // The outline itself is the progress meter: cold faint blue far away,
-  // brightening toward gold as the match rises, pulsing when close.
+/**
+ * One lit projection on its blueprint: the outline to fill, and the shadow the piece casts
+ * along that axis. The outline is also that axis's own progress meter — cold faint blue far
+ * away, brightening toward gold as its shadow closes in, pulsing when it nearly fits.
+ */
+function Projection({ view, index, sil }: { view: View; index: number; sil: Silhouetter }) {
+  const outline = useRef<MeshBasicMaterial>(null)
+  const { center, frame } = DIALS[view.axis]
+
   useFrame(({ clock }) => {
-    const m = overlay.current
+    const m = outline.current
     if (!m) return
     const game = useGame.getState()
     if (game.solved) {
       m.color.set('#f5c451')
       m.opacity = 0.75 + Math.sin(clock.elapsedTime * 3) * 0.25
     } else {
-      const win = game.level?.winIou ?? 1
-      const n = Math.min(Math.max((game.match - 0.35) / (win - 0.35), 0), 1)
+      const n = progressOf(game.matches[index] ?? 0, view)
       m.color.setHSL((210 - 165 * n) / 360, 0.8, 0.72 + 0.22 * n)
       m.opacity = 0.8 + 0.2 * n + (n > 0.85 ? Math.sin(clock.elapsedTime * 7) * 0.12 : 0)
     }
   })
+
+  return (
+    <group position={center} quaternion={frame}>
+      <mesh position={[0, 0, OUTLINE_Z]}>
+        <planeGeometry args={[FRAME * 2, FRAME * 2]} />
+        <meshBasicMaterial
+          ref={outline}
+          map={view.texture}
+          color="#e3f1ff"
+          transparent
+          depthWrite={false}
+          toneMapped={false}
+        />
+      </mesh>
+      {/* the silhouette render is white on black, so it serves as the shadow's alpha */}
+      <mesh position={[0, 0, SHADOW_Z]}>
+        <planeGeometry args={[FRAME * 2, FRAME * 2]} />
+        <meshBasicMaterial
+          color="#010611"
+          alphaMap={sil.shadow(view.axis).texture}
+          transparent
+          opacity={0.6}
+          depthWrite={false}
+          toneMapped={false}
+        />
+      </mesh>
+    </group>
+  )
+}
+
+export function LevelView() {
+  const gl = useThree((s) => s.gl)
+  const seed = useGame((s) => s.seed)
+  const level = useGame((s) => s.level)
+  const sil = useMemo(() => new Silhouetter(gl), [gl])
 
   useEffect(() => () => sil.dispose(), [sil])
   useEffect(() => {
@@ -38,7 +77,7 @@ export function LevelView() {
     loadObjects().then(() => {
       if (!live) return
       const level = buildLevel(seed, sil)
-      level.targetTexture.anisotropy = gl.capabilities.getMaxAnisotropy()
+      for (const view of level.views) view.texture.anisotropy = gl.capabilities.getMaxAnisotropy()
       useGame.getState().setLevel(level)
       for (const spring of dials.springs) Object.assign(spring, { target: 0, angle: 0, vel: 0 })
     })
@@ -51,18 +90,9 @@ export function LevelView() {
   return (
     <>
       <Shape key={level.seed} level={level} sil={sil} />
-      {/* Sits between the wall and its shadow layer, so the cast shadow darkens over the blueprint. */}
-      <mesh position={[0, 0, WALL_Z + 0.001]}>
-        <planeGeometry args={[FRAME * 2, FRAME * 2]} />
-        <meshBasicMaterial
-          ref={overlay}
-          map={level.targetTexture}
-          color="#e3f1ff"
-          transparent
-          depthWrite={false}
-          toneMapped={false}
-        />
-      </mesh>
+      {level.views.map((view, i) => (
+        <Projection key={view.axis} view={view} index={i} sil={sil} />
+      ))}
     </>
   )
 }

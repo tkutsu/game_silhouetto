@@ -1,6 +1,5 @@
 import { Matrix4, Plane, Quaternion, Vector3, type Ray } from 'three'
-import { FLOOR_Y, FRAME, SIDE_X, WALL_Z } from './constants'
-import { AXES } from './level'
+import { AXES, FLOOR_Y, FRAME, SIDE_X, WALL_Z } from './constants'
 
 /** Radius of each dashed ring, where the knob rides. */
 export const DIAL_RING = FRAME * 0.94

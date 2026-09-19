@@ -38,12 +38,10 @@ function NoteIcon({ muted }: { muted: boolean }) {
 const SEGMENTS = 10
 
 function MatchMeter() {
-  const match = useGame((s) => s.match)
   const peak = useGame((s) => s.peak)
   const solved = useGame((s) => s.solved)
-  // the bar moves per level, so the meter fills exactly as the win lands
-  const win = useGame((s) => s.level?.winIou ?? 1)
-  const n = Math.min(Math.max((match - 0.35) / (win - 0.35), 0), 1)
+  // the reading of the projection that fits worst, so the meter fills exactly as the win lands
+  const n = useGame((s) => s.progress)
   const lit = solved ? SEGMENTS : Math.floor(n * SEGMENTS)
   const color = solved ? '#f5c451' : `hsl(${210 - 165 * n} 85% ${60 + 10 * n}%)`
   // past 55% the whole meter starts to rumble, harder and faster the closer you get

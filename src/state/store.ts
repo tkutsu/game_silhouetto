@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { disposeShape } from '../lib/generateShape'
-import type { Level } from '../lib/level'
+import { progressOf, type Level } from '../lib/level'
 import * as sound from '../lib/sound'
 import { loadStats, saveStats } from '../lib/stats'
 
@@ -11,12 +11,19 @@ const HELP_KEY = 'silhouetto:helpSeen'
 // kept from the old practice mode so links shared before the redesign still open the same puzzle
 const SEED_PREFIX = 'practice-'
 export const MAX_SOLVES = 3
+/** Chimes on the way in: one per step of the meter newly reached. */
+const CHIME_STEPS = 10
 const MAX_DIFFICULTY = 12
 
 interface GameState {
   seed: string
   level: Level | null
+  /** The worst of the lit projections: the one still holding the win up. */
   match: number
+  /** One raw score per lit projection, in `level.views` order. */
+  matches: number[]
+  /** How full the meter is, 0 to 1: the least advanced projection's share. A 1 is a win. */
+  progress: number
   /** Highest closeness step reached on this puzzle; each new one gets a chime. */
   peak: number
   solved: boolean
@@ -40,7 +47,7 @@ interface GameState {
   openHelp: () => void
   closeHelp: () => void
   setLevel: (level: Level) => void
-  setMatch: (match: number) => void
+  setMatch: (matches: number[]) => void
   begin: () => void
   solve: (match: number) => void
   autoSolve: () => void
@@ -101,6 +108,8 @@ export const useGame = create<GameState>((set, get) => ({
   seed: shared?.seed ?? seedFor(1),
   level: null,
   match: 0,
+  matches: [],
+  progress: 0,
   peak: 0,
   solved: false,
   startedAt: null,
@@ -127,12 +136,14 @@ export const useGame = create<GameState>((set, get) => ({
     const old = get().level
     if (old && old !== level) {
       disposeShape(old)
-      old.targetTexture.dispose()
+      for (const view of old.views) view.texture.dispose()
     }
     set({
       level,
       solved: false,
       match: 0,
+      matches: level.views.map(() => 0),
+      progress: 0,
       peak: 0,
       startedAt: null,
       time: null,
@@ -142,14 +153,18 @@ export const useGame = create<GameState>((set, get) => ({
     })
   },
 
-  setMatch: (match) => {
-    const step = Math.floor((match - 0.4) / 0.05)
+  setMatch: (matches) => {
+    const views = get().level?.views ?? []
+    // the meter follows the projection furthest from its outline, so nothing is won while one lags
+    const progress = Math.min(...matches.map((m, i) => progressOf(m, views[i])))
+    const match = Math.min(...matches)
+    const step = Math.floor(progress * CHIME_STEPS)
     if (step > get().peak && get().startedAt !== null) {
       if (!get().muted) sound.closer(step)
       navigator.vibrate?.(8)
-      set({ match, peak: step })
+      set({ match, matches, progress, peak: step })
     } else {
-      set({ match })
+      set({ match, matches, progress })
     }
   },
 
